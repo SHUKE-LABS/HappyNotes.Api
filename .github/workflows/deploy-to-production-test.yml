@@ -11,15 +11,15 @@ jobs:
 
     strategy:
       matrix:
-        dotnet: ["8.0.x"]
+        dotnet: ["10.0.x"]
 
     steps:
       - uses: actions/checkout@v4
 
-#      - name: Setup .NET Core SDK ${{ matrix.dotnet }}
-#        uses: actions/setup-dotnet@v4
-#        with:
-#          dotnet-version: ${{ matrix.dotnet }}
+      - name: Setup .NET SDK ${{ matrix.dotnet }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
 
       - name: Fetch Git Commit Hash
         id: get_commit
@@ -36,7 +36,7 @@ jobs:
 
           # Modify service file for test environment
           sed -i 's|WorkingDirectory=/var/www/HappyNotes.Api|WorkingDirectory=/var/www/HappyNotes.Api.test|g' ~/.config/systemd/user/HappyNotes.Api.test.service
-          sed -i 's|ExecStart=.*|ExecStart=/home/shukebeta/.dotnet/dotnet /var/www/HappyNotes.Api.test/HappyNotes.Api.dll --urls "http://127.0.0.1:5013"|g' ~/.config/systemd/user/HappyNotes.Api.test.service
+          sed -i 's|ExecStart=.*|ExecStart=/var/www/HappyNotes.Api.test/HappyNotes.Api --urls "http://127.0.0.1:5013"|g' ~/.config/systemd/user/HappyNotes.Api.test.service
           sed -i 's/Staging/Production/' ~/.config/systemd/user/HappyNotes.Api.test.service
 
           echo "Test service file content:"

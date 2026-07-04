@@ -11,12 +11,17 @@ jobs:
 
     strategy:
       matrix:
-        dotnet: ["8.0.x"]
+        dotnet: ["10.0.x"]
 
     # A sequence of tasks that will execute as part of the job
     steps:
       # Checks out repository so our job can access it
       - uses: actions/checkout@v4
+
+      - name: Setup .NET SDK ${{ matrix.dotnet }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
 
       - name: Fetch Git Commit Hash
         id: get_commit
@@ -68,7 +73,7 @@ jobs:
           # Copy service file to user systemd directory
           mkdir -p ~/.config/systemd/user
           cp deploy/systemd/happynotes-api.service ~/.config/systemd/user/HappyNotes.Api.service
-          sed -i 's|ExecStart=.*|ExecStart=/home/shukebeta/.dotnet/dotnet /var/www/HappyNotes.Api/HappyNotes.Api.dll --urls "http://127.0.0.1:5012"|g' ~/.config/systemd/user/HappyNotes.Api.service
+          sed -i 's|ExecStart=.*|ExecStart=/var/www/HappyNotes.Api/HappyNotes.Api --urls "http://127.0.0.1:5012"|g' ~/.config/systemd/user/HappyNotes.Api.service
           sed -i 's/Staging/Production/' ~/.config/systemd/user/HappyNotes.Api.service
 
           # Reload systemd and restart service
