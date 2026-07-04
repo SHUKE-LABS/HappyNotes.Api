@@ -37,4 +37,7 @@ public enum EventId
 
     [Description("The provided old password is incorrect")]
     _00108_OldPasswordIncorrect = 108,
+
+    [Description("Invalid or expired Google ID token")]
+    _00109_InvalidGoogleIdToken = 109,
 }

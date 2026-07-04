@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="CoreHtmlToImage" Version="1.0.6" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.75.0" />
     <PackageReference Include="Markdig.Signed" Version="0.40.0" />
     <PackageReference Include="Mastonet" Version="3.1.2" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
