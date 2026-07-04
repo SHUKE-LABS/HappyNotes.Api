@@ -20,6 +20,11 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ matrix.dotnet }}
+        env:
+          # racknerd runs a rootless self-hosted runner; the default
+          # /usr/share/dotnet is not writable. Install into the runner
+          # user's home (also reused across runs as an SDK cache).
+          DOTNET_INSTALL_DIR: /home/shukebeta/.dotnet
 
       - name: Fetch Git Commit Hash
         id: get_commit
