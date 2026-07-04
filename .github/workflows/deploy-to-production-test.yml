@@ -80,7 +80,7 @@ jobs:
           sed -i "s/default_mysql_server/127.0.0.1/" /var/www/HappyNotes.Api.test/appsettings.json
           sed -i "s/default_manticore_server/arm.shukebeta.eu.org/" /var/www/HappyNotes.Api.test/appsettings.json
           sed -i "s#seq-api-key-placeholder#${{ secrets.PRODUCTION_SEQ_API_KEY }}#g" /var/www/HappyNotes.Api.test/appsettings.json
-          sed -i "s/redis-connection-placeholder/arm.shukebeta.eu.org:6381/g" /var/www/HappyNotes.Api/appsettings.json
+          sed -i "s/redis-connection-placeholder/arm.shukebeta.eu.org:6381/g" /var/www/HappyNotes.Api.test/appsettings.json
 
       - name: Start test service (after DLL is published)
         run: |
