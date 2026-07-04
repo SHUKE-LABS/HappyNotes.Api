@@ -6,115 +6,14 @@ on:
 
 jobs:
   deploy:
-    # Production server
-    runs-on: [self-hosted, linux, racknerd]
-
-    strategy:
-      matrix:
-        dotnet: ["10.0.x"]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup .NET SDK ${{ matrix.dotnet }}
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ matrix.dotnet }}
-        env:
-          # racknerd runs a rootless self-hosted runner; the default
-          # /usr/share/dotnet is not writable. Install into the runner
-          # user's home (also reused across runs as an SDK cache).
-          DOTNET_INSTALL_DIR: /home/shukebeta/.dotnet
-
-      - name: Fetch Git Commit Hash
-        id: get_commit
-        run: |
-          echo "::set-output name=commit_hash::$(git rev-parse --short HEAD)"
-          echo "::set-output name=build_date::$(date '+%Y-%b-%d')"
-
-      # Create service file EARLY (needs source code access)
-      - name: Create test systemd service
-        run: |
-          # Create test service file
-          mkdir -p ~/.config/systemd/user
-          cp deploy/systemd/happynotes-api.service ~/.config/systemd/user/HappyNotes.Api.test.service
-
-          # Modify service file for test environment
-          sed -i 's|WorkingDirectory=/var/www/HappyNotes.Api|WorkingDirectory=/var/www/HappyNotes.Api.test|g' ~/.config/systemd/user/HappyNotes.Api.test.service
-          sed -i 's|ExecStart=.*|ExecStart=/var/www/HappyNotes.Api.test/HappyNotes.Api --urls "http://127.0.0.1:5013"|g' ~/.config/systemd/user/HappyNotes.Api.test.service
-          sed -i 's/Staging/Production/' ~/.config/systemd/user/HappyNotes.Api.test.service
-
-          echo "Test service file content:"
-          cat ~/.config/systemd/user/HappyNotes.Api.test.service
-
-      # Then build and publish
-      - name: Clean project
-        run: dotnet clean --configuration Release
-
-      - name: Clean build cache directories
-        run: rm -rf src/*/bin src/*/obj
-
-      - name: Install dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --configuration Release --no-restore
-
-      - name: Stop test service before cleaning directory
-        run: |
-          export XDG_RUNTIME_DIR=/run/user/$(id -u)
-          systemctl --user stop HappyNotes.Api.test.service || true
-
-      - name: Clean deployment directory
-        run: rm -rf /var/www/HappyNotes.Api.test/*
-
-      - name: Publish to test directory
-        run: dotnet publish -c Release --self-contained true --runtime linux-x64 --property:PublishDir=/var/www/HappyNotes.Api.test
-
-      - name: Replace placeholders with actual information
-        run: |
-          pwd
-          # Use production secrets but deploy to test directory
-          sed -i "s/password-placeholder/${{ secrets.PRODUCTION_MYSQL_PASSWORD }}/g" /var/www/HappyNotes.Api.test/appsettings.json
-          sed -i "s/symmetric-security-key-placeholder/${{ secrets.PRODUCTION_SYMMETRIC_SECURITY_KEY }}/g" /var/www/HappyNotes.Api.test/appsettings.json
-          sed -i "s/staging-happynotes-api.dev/happynotes-api-test/g" /var/www/HappyNotes.Api.test/appsettings.json
-          COMMIT_HASH=${{ steps.get_commit.outputs.commit_hash }}
-          BUILD_DATE=${{ steps.get_commit.outputs.build_date }}
-          VERSION_INFO="$COMMIT_HASH ($BUILD_DATE)"
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION_INFO/" /var/www/HappyNotes.Api.test/appsettings.json
-          sed -i "s/default_mysql_server/127.0.0.1/" /var/www/HappyNotes.Api.test/appsettings.json
-          sed -i "s/default_manticore_server/arm.shukebeta.eu.org/" /var/www/HappyNotes.Api.test/appsettings.json
-          sed -i "s#seq-api-key-placeholder#${{ secrets.PRODUCTION_SEQ_API_KEY }}#g" /var/www/HappyNotes.Api.test/appsettings.json
-          sed -i "s/redis-connection-placeholder/arm.shukebeta.eu.org:6381/g" /var/www/HappyNotes.Api.test/appsettings.json
-
-      - name: Start test service (after DLL is published)
-        run: |
-          echo "ASPNETCORE_ENVIRONMENT: $ASPNETCORE_ENVIRONMENT"
-          export XDG_RUNTIME_DIR=/run/user/$(id -u)
-          systemctl --user daemon-reload
-          systemctl --user enable HappyNotes.Api.test.service || true
-          systemctl --user restart HappyNotes.Api.test.service
-
-          echo "Test service status:"
-          systemctl --user status HappyNotes.Api.test.service
-
-          echo "Test service logs (last 20 lines):"
-          journalctl --user -u HappyNotes.Api.test.service --no-pager -n 20 || echo "Could not fetch logs"
-
-      - name: Verify test deployment
-        run: |
-          # Poll /health until it returns 2xx. The app takes ~7s to finish
-          # startup (NLog/Seq/Redis/DataProtection/SyncQueue), so a fixed
-          # sleep races it; -f makes curl fail on non-2xx.
-          echo "Waiting for /health on 127.0.0.1:5013..."
-          for i in $(seq 1 30); do
-            if curl -fs -o /dev/null http://127.0.0.1:5013/health; then
-              echo "Health check passed on 5013 (attempt $i)."
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Test service /health did not return 2xx within 60s." >&2
-          export XDG_RUNTIME_DIR=/run/user/$(id -u)
-          journalctl --user -u HappyNotes.Api.test.service --no-pager -n 50 >&2 || true
-          exit 1
+    uses: ./.github/workflows/_deploy-self-contained.yml
+    with:
+      environment_label: production-test
+      deploy_path: /var/www/HappyNotes.Api.test
+      port: "5013"
+      service_name: HappyNotes.Api.test.service
+      host_token: happynotes-api-test
+    secrets:
+      MYSQL_PASSWORD: ${{ secrets.PRODUCTION_MYSQL_PASSWORD }}
+      SYMMETRIC_SECURITY_KEY: ${{ secrets.PRODUCTION_SYMMETRIC_SECURITY_KEY }}
+      SEQ_API_KEY: ${{ secrets.PRODUCTION_SEQ_API_KEY }}

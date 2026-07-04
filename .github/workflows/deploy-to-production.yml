@@ -6,82 +6,14 @@ on:
 
 jobs:
   deploy:
-    # Our previously created self-hosted runner
-    runs-on: [self-hosted, linux, racknerd]
-
-    strategy:
-      matrix:
-        dotnet: ["10.0.x"]
-
-    # A sequence of tasks that will execute as part of the job
-    steps:
-      # Checks out repository so our job can access it
-      - uses: actions/checkout@v4
-
-      - name: Setup .NET SDK ${{ matrix.dotnet }}
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ matrix.dotnet }}
-        env:
-          # racknerd runs a rootless self-hosted runner; the default
-          # /usr/share/dotnet is not writable. Install into the runner
-          # user's home (also reused across runs as an SDK cache).
-          DOTNET_INSTALL_DIR: /home/shukebeta/.dotnet
-
-      - name: Fetch Git Commit Hash
-        id: get_commit
-        run: |
-          echo "::set-output name=commit_hash::$(git rev-parse --short HEAD)"
-          echo "::set-output name=build_date::$(date '+%Y-%b-%d')"
-
-      - name: Clean project
-        run: dotnet clean --configuration Release
-
-      - name: Clean build cache directories
-        run: rm -rf src/*/bin src/*/obj
-
-      - name: Install dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --configuration Release --no-restore
-
-      - name: Stop service before cleaning directory
-        run: |
-          export XDG_RUNTIME_DIR=/run/user/$(id -u)
-          systemctl --user stop HappyNotes.Api.service || true
-
-      - name: Clean deployment directory
-        run: rm -rf /var/www/HappyNotes.Api/*
-
-      - name: Publish
-        run: dotnet publish -c Release --self-contained true --runtime linux-x64 --property:PublishDir=/var/www/HappyNotes.Api
-
-      - name: Replace placeholders with actual information
-        run: |
-          set -x
-          pwd
-          sed -i "s/password-placeholder/${{ secrets.PRODUCTION_MYSQL_PASSWORD }}/g" /var/www/HappyNotes.Api/appsettings.json
-          sed -i "s/symmetric-security-key-placeholder/${{ secrets.PRODUCTION_SYMMETRIC_SECURITY_KEY }}/g" /var/www/HappyNotes.Api/appsettings.json
-          sed -i "s/staging-happynotes-api.dev/happynotes-api/g" /var/www/HappyNotes.Api/appsettings.json
-          COMMIT_HASH=${{ steps.get_commit.outputs.commit_hash }}
-          BUILD_DATE=${{ steps.get_commit.outputs.build_date }}
-          VERSION_INFO="$COMMIT_HASH ($BUILD_DATE)"
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION_INFO/"  /var/www/HappyNotes.Api/appsettings.json
-          sed -i "s/default_mysql_server/127.0.0.1/" /var/www/HappyNotes.Api/appsettings.json
-          sed -i "s/default_manticore_server/arm.shukebeta.eu.org/" /var/www/HappyNotes.Api/appsettings.json
-          sed -i "s#seq-api-key-placeholder#${{ secrets.PRODUCTION_SEQ_API_KEY }}#g" /var/www/HappyNotes.Api/appsettings.json
-          sed -i "s/redis-connection-placeholder/arm.shukebeta.eu.org:6381/g" /var/www/HappyNotes.Api/appsettings.json
-
-      - name: Deploy systemd service file
-        run: |
-          # Copy service file to user systemd directory
-          mkdir -p ~/.config/systemd/user
-          cp deploy/systemd/happynotes-api.service ~/.config/systemd/user/HappyNotes.Api.service
-          sed -i 's|ExecStart=.*|ExecStart=/var/www/HappyNotes.Api/HappyNotes.Api --urls "http://127.0.0.1:5012"|g' ~/.config/systemd/user/HappyNotes.Api.service
-          sed -i 's/Staging/Production/' ~/.config/systemd/user/HappyNotes.Api.service
-
-          # Reload systemd and restart service
-          export XDG_RUNTIME_DIR=/run/user/$(id -u)
-          systemctl --user daemon-reload
-          systemctl --user restart HappyNotes.Api.service
+    uses: ./.github/workflows/_deploy-self-contained.yml
+    with:
+      environment_label: production
+      deploy_path: /var/www/HappyNotes.Api
+      port: "5012"
+      service_name: HappyNotes.Api.service
+      host_token: happynotes-api
+    secrets:
+      MYSQL_PASSWORD: ${{ secrets.PRODUCTION_MYSQL_PASSWORD }}
+      SYMMETRIC_SECURITY_KEY: ${{ secrets.PRODUCTION_SYMMETRIC_SECURITY_KEY }}
+      SEQ_API_KEY: ${{ secrets.PRODUCTION_SEQ_API_KEY }}

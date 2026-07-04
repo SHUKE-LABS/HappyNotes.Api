@@ -1,0 +1,132 @@
+name: _deploy-self-contained (reusable)
+
+# Single source of truth for the self-contained -> apphost -> systemd deploy
+# on the racknerd self-hosted runner. Callers pass only the per-environment
+# parameters below; the sequence itself lives here so production and
+# production-test can never drift.
+on:
+  workflow_call:
+    inputs:
+      environment_label:
+        description: Human label, e.g. production or production-test
+        type: string
+        required: true
+      deploy_path:
+        description: Absolute publish/deploy directory on the host
+        type: string
+        required: true
+      port:
+        description: Loopback port the service binds to
+        type: string
+        required: true
+      service_name:
+        description: systemd user unit filename (…​.service)
+        type: string
+        required: true
+      host_token:
+        description: Value that replaces staging-happynotes-api.dev in appsettings
+        type: string
+        required: true
+    secrets:
+      MYSQL_PASSWORD:
+        required: true
+      SYMMETRIC_SECURITY_KEY:
+        required: true
+      SEQ_API_KEY:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, racknerd]
+
+    strategy:
+      matrix:
+        dotnet: ["10.0.x"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET SDK ${{ matrix.dotnet }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+        env:
+          # racknerd runs a rootless self-hosted runner; the default
+          # /usr/share/dotnet is not writable. Install into the runner
+          # user's home (also reused across runs as an SDK cache).
+          DOTNET_INSTALL_DIR: /home/shukebeta/.dotnet
+
+      - name: Clean project
+        run: dotnet clean --configuration Release
+
+      - name: Clean build cache directories
+        run: rm -rf src/*/bin src/*/obj
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Stop service before cleaning directory
+        run: |
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          systemctl --user stop ${{ inputs.service_name }} || true
+
+      - name: Clean deployment directory
+        run: rm -rf "${{ inputs.deploy_path }}"/*
+
+      - name: Publish (self-contained)
+        run: dotnet publish -c Release --self-contained true --runtime linux-x64 --property:PublishDir=${{ inputs.deploy_path }}
+
+      - name: Replace placeholders with actual information
+        run: |
+          set -e
+          APPSETTINGS="${{ inputs.deploy_path }}/appsettings.json"
+          sed -i "s/password-placeholder/${{ secrets.MYSQL_PASSWORD }}/g" "$APPSETTINGS"
+          sed -i "s/symmetric-security-key-placeholder/${{ secrets.SYMMETRIC_SECURITY_KEY }}/g" "$APPSETTINGS"
+          sed -i "s/staging-happynotes-api.dev/${{ inputs.host_token }}/g" "$APPSETTINGS"
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date '+%Y-%b-%d')
+          sed -i "s/VERSION_PLACEHOLDER/$COMMIT_HASH ($BUILD_DATE)/" "$APPSETTINGS"
+          sed -i "s/default_mysql_server/127.0.0.1/" "$APPSETTINGS"
+          sed -i "s/default_manticore_server/arm.shukebeta.eu.org/" "$APPSETTINGS"
+          sed -i "s#seq-api-key-placeholder#${{ secrets.SEQ_API_KEY }}#g" "$APPSETTINGS"
+          sed -i "s/redis-connection-placeholder/arm.shukebeta.eu.org:6381/g" "$APPSETTINGS"
+
+      - name: Install systemd unit and restart service
+        run: |
+          set -e
+          UNIT="$HOME/.config/systemd/user/${{ inputs.service_name }}"
+          mkdir -p "$HOME/.config/systemd/user"
+          cp deploy/systemd/happynotes-api.service "$UNIT"
+          sed -i 's|WorkingDirectory=.*|WorkingDirectory=${{ inputs.deploy_path }}|g' "$UNIT"
+          sed -i 's|ExecStart=.*|ExecStart=${{ inputs.deploy_path }}/HappyNotes.Api --urls "http://127.0.0.1:${{ inputs.port }}"|g' "$UNIT"
+          sed -i 's/Staging/Production/' "$UNIT"
+          echo "Rendered unit:"
+          cat "$UNIT"
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          systemctl --user daemon-reload
+          systemctl --user enable ${{ inputs.service_name }} || true
+          systemctl --user restart ${{ inputs.service_name }}
+          systemctl --user status ${{ inputs.service_name }} --no-pager || true
+          journalctl --user -u ${{ inputs.service_name }} --no-pager -n 20 || echo "Could not fetch logs"
+
+      - name: Verify deployment
+        run: |
+          # Poll /health until it returns 2xx. The app takes ~7s to finish
+          # startup (NLog/Seq/Redis/DataProtection/SyncQueue), so a fixed
+          # sleep races it; -f makes curl fail on non-2xx.
+          PORT="${{ inputs.port }}"
+          echo "Waiting for /health on 127.0.0.1:$PORT..."
+          for i in $(seq 1 30); do
+            if curl -fs -o /dev/null "http://127.0.0.1:$PORT/health"; then
+              echo "Health check passed on $PORT (attempt $i)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "${{ inputs.environment_label }} /health did not return 2xx within 60s." >&2
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          journalctl --user -u ${{ inputs.service_name }} --no-pager -n 50 >&2 || true
+          exit 1
