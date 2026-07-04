@@ -19,6 +19,7 @@ namespace HappyNotes.Api.Controllers
         IOptions<JwtConfig> jwtConfig,
         IRepositoryBase<User> userRepository,
         IAccountService accountService,
+        IGoogleAuthService googleAuthService,
         IMapper mapper,
         ICurrentUser currentUser)
         : BaseController
@@ -116,6 +117,18 @@ namespace HappyNotes.Api.Controllers
             {
                 throw new Exception("Sorry, your account has been deleted");
             }
+
+            var claims = TokenHelper.ClaimsGenerator(user.Id, user.Username, user.Email);
+            var jwtToken = TokenHelper.JwtTokenGenerator(claims, _jwtConfig.Issuer, _jwtConfig.SymmetricSecurityKey, TokenExpiresInDays);
+
+            return new SuccessfulResult<JwtToken>(new JwtToken { Token = jwtToken, });
+        }
+
+        [AllowAnonymous]
+        [HttpPost]
+        public async Task<ApiResult<JwtToken>> GoogleLogin(GoogleLoginRequest request)
+        {
+            var user = await googleAuthService.ResolveOrCreateUserAsync(request.IdToken);
 
             var claims = TokenHelper.ClaimsGenerator(user.Id, user.Username, user.Email);
             var jwtToken = TokenHelper.JwtTokenGenerator(claims, _jwtConfig.Issuer, _jwtConfig.SymmetricSecurityKey, TokenExpiresInDays);

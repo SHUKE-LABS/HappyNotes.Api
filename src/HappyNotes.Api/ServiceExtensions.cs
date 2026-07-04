@@ -13,6 +13,8 @@ public static class ServiceExtensions
     {
         services.AddHttpClient();
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IGoogleIdTokenVerifier, GoogleIdTokenVerifier>();
+        services.AddScoped<IGoogleAuthService, GoogleAuthService>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<INoteTagService, NoteTagService>();
         services.AddScoped<INoteRepository, NoteRepository>();
