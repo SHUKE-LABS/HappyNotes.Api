@@ -2,34 +2,53 @@
 
 [English](./README.md)
 
-HappyNotes.Api 是 HappyNotes 项目的后端服务，使用 C# 语言开发。
+HappyNotes 项目的后端服务，基于 .NET 10 的 ASP.NET Core 构建。
 
-## 项目简介
+## 前置要求
 
-HappyNotes.Api 为 HappyNotes 应用提供后端支持，负责处理数据存储、用户认证和 API 接口等功能。
-
-## 主要特性
-
-- 使用 C# 语言开发
-- 提供 RESTful API 接口
-- 实现用户认证和授权
-- 数据持久化存储
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)（10.0.301 或更高补丁版本）
+- MySQL / MariaDB 数据库
+- Redis（Telegram 和 Mastodon 同步队列必需）
 
 ## 快速开始
 
-1. 克隆仓库
-2. 安装依赖
-3. 配置数据库连接
-4. 运行项目
+```bash
+# 1. 克隆仓库
+git clone <repo-url>
+cd HappyNotes.Api
 
-## API 文档
+# 2. 还原依赖
+dotnet restore
 
-本项目提供有详尽的 API 文档，运行项目后即可通过 `/swagger/index.html` 查看 Swagger 文档。
+# 3. 配置
+cp src/HappyNotes.Api/appsettings.json src/HappyNotes.Api/appsettings.Development.json
+# 编辑 appsettings.Development.json：设置 ConnectionStrings、Redis、JWT 等配置
 
-## 贡献指南
+# 4. 运行
+dotnet run --project src/HappyNotes.Api
+```
 
-欢迎提交 Issue 或 Pull Request 来改进项目。
+API 地址：`https://localhost:5001`，Swagger 文档：`/swagger/index.html`。
+
+## 架构概览
+
+- **ASP.NET Core Web API** — 带 JWT 认证的 RESTful 接口
+- **Redis 同步队列** — 可靠的后台同步机制，支持指数退避重试（1 分钟 → 2 分钟 → 4 分钟 → 8 分钟），用于推送到 Telegram 和 Mastodon
+- **Telegram 集成** — 通过队列将笔记发布到指定 Telegram 频道
+- **Mastodon 集成** — 通过队列将笔记同步到 Mastodon 实例
+- **ManticoreSearch** — 全文搜索（直接同步，尚未接入队列）
+- **`/health` 端点** — 生产环境监控用存活检查
+
+## 构建与测试
+
+```bash
+dotnet build
+dotnet test --filter "TestCategory!=Integration"   # 仅运行单元测试
+dotnet test                                         # 运行所有测试（需要 Redis）
+```
+
+运行集成测试前需设置 `REDIS_CONNECTION_STRING` 环境变量（默认：`localhost:6379`）。
 
 ## 许可证
 
-本项目采用 MIT 许可证，详情请见 [LICENSE](./LICENSE) 文件。
+MIT — 详见 [LICENSE](./LICENSE)。
