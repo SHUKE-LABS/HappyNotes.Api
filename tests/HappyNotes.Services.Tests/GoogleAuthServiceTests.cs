@@ -126,4 +126,48 @@ public class GoogleAuthServiceTests
         Assert.That(insertedLink!.UserId, Is.EqualTo(99));
         Assert.That(insertedLink.ProviderSubject, Is.EqualTo("new-subject"));
     }
+
+    [Test]
+    public async Task ResolveOrCreateUserAsync_UnverifiedEmail_SkipsLookupAndCreatesUserWithEmailUnverified()
+    {
+        // Distinct Username so it never collides with CreateUserAsync's generated username;
+        // matching Email so it would be wrongly returned if the (skipped) email lookup ran.
+        var trapUser = new User { Id = 55, Username = "trapuser", Email = "unverified@example.com" };
+        _mockVerifier.Setup(v => v.VerifyAsync(It.IsAny<string>()))
+            .ReturnsAsync(MakePayload("unverified-subject", "unverified@example.com", false));
+        _mockExternalLoginRepo.Setup(r => r.GetFirstOrDefaultAsync(It.IsAny<Expression<Func<UserExternalLogin, bool>>>(), null))
+            .ReturnsAsync((UserExternalLogin?)null);
+
+        // GetFirstOrDefaultAsync<User> is shared by the (skipped) email lookup and
+        // CreateUserAsync's username-uniqueness do-while; a blanket non-null mock would
+        // hang that loop, so differentiate by which predicate the trap user satisfies.
+        _mockUserRepo.Setup(r => r.GetFirstOrDefaultAsync(
+                It.Is<Expression<Func<User, bool>>>(e => e.Compile()(trapUser)), null))
+            .ReturnsAsync(trapUser);
+        _mockUserRepo.Setup(r => r.GetFirstOrDefaultAsync(
+                It.Is<Expression<Func<User, bool>>>(e => !e.Compile()(trapUser)), null))
+            .ReturnsAsync((User?)null);
+
+        User? insertedUser = null;
+        _mockUserRepo.Setup(r => r.InsertReturnIdentityAsync(It.IsAny<User>()))
+            .Callback<User>(u => insertedUser = u)
+            .ReturnsAsync(101);
+
+        UserExternalLogin? insertedLink = null;
+        _mockExternalLoginRepo.Setup(r => r.InsertAsync(It.IsAny<UserExternalLogin>()))
+            .Callback<UserExternalLogin>(l => insertedLink = l)
+            .ReturnsAsync(true);
+
+        var result = await _service.ResolveOrCreateUserAsync("valid-token");
+
+        _mockUserRepo.Verify(r => r.InsertReturnIdentityAsync(It.IsAny<User>()), Times.Once);
+        Assert.That(insertedUser, Is.Not.Null);
+        Assert.That(insertedUser!.Email, Is.EqualTo("unverified@example.com"));
+        Assert.That(insertedUser.EmailVerified, Is.EqualTo(0));
+
+        Assert.That(result.Id, Is.EqualTo(101));
+        Assert.That(insertedLink, Is.Not.Null);
+        Assert.That(insertedLink!.UserId, Is.EqualTo(101));
+        Assert.That(insertedLink.ProviderSubject, Is.EqualTo("unverified-subject"));
+    }
 }
