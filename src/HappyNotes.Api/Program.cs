@@ -119,6 +119,7 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/health", () => "Healthy").AllowAnonymous();
 logger.LogInformation(envName);
 app.Run();
 return;

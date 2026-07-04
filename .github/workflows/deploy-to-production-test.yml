@@ -103,19 +103,18 @@ jobs:
 
       - name: Verify test deployment
         run: |
-          # Poll until Kestrel accepts a connection on 5013. The app takes
-          # ~7s to finish startup (NLog/Seq/Redis/DataProtection/SyncQueue),
-          # so a fixed sleep races it. There is no /health endpoint, so any
-          # HTTP response (even 404) proves the server is listening.
-          echo "Waiting for test service to listen on 127.0.0.1:5013..."
+          # Poll /health until it returns 2xx. The app takes ~7s to finish
+          # startup (NLog/Seq/Redis/DataProtection/SyncQueue), so a fixed
+          # sleep races it; -f makes curl fail on non-2xx.
+          echo "Waiting for /health on 127.0.0.1:5013..."
           for i in $(seq 1 30); do
-            if curl -s -o /dev/null http://127.0.0.1:5013/; then
-              echo "Service is responding on 5013 (attempt $i)."
+            if curl -fs -o /dev/null http://127.0.0.1:5013/health; then
+              echo "Health check passed on 5013 (attempt $i)."
               exit 0
             fi
             sleep 2
           done
-          echo "Test service did not start listening on 5013 within 60s." >&2
+          echo "Test service /health did not return 2xx within 60s." >&2
           export XDG_RUNTIME_DIR=/run/user/$(id -u)
           journalctl --user -u HappyNotes.Api.test.service --no-pager -n 50 >&2 || true
           exit 1
