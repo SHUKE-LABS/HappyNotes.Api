@@ -9,7 +9,7 @@ namespace HappyNotes.Api.Controllers;
 
 [ApiController]
 [Route("api/admin/sync-queue")]
-[Authorize] // Add proper authorization as needed
+[Authorize(Policy = "Admin")]
 public class SyncQueueAdminController : ControllerBase
 {
     private readonly ISyncQueueService _queueService;
@@ -137,14 +137,8 @@ public class SyncQueueAdminController : ControllerBase
 
             foreach (var service in services)
             {
-                var stats = await _queueService.GetStatsAsync(service);
-                healthStatus[service] = new
-                {
-                    status = "healthy",
-                    pendingTasks = stats.PendingCount,
-                    failedTasks = stats.FailedCount,
-                    lastProcessed = stats.LastProcessedAt
-                };
+                await _queueService.GetStatsAsync(service);
+                healthStatus[service] = new { status = "healthy" };
             }
 
             return Ok(new

@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Api.Framework;
@@ -67,6 +68,13 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddCors(SetupCors(builder));
 ConfigAuthentication(builder);
+var adminConfig = builder.Configuration.GetSection("Admin").Get<AdminConfig>() ?? new AdminConfig();
+var adminIds = adminConfig.AdminUserIds.Select(id => id.ToString()).ToHashSet();
+builder.Services.AddAuthorization(opts =>
+    opts.AddPolicy("Admin", p =>
+        p.RequireAssertion(ctx =>
+            adminIds.Count > 0 &&
+            adminIds.Contains(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ""))));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 
