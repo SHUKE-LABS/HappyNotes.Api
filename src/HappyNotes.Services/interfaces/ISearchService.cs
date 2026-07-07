@@ -9,5 +9,5 @@ public interface ISearchService
     Task SyncNoteToIndexAsync(Note note, string fullContent);
     Task DeleteNoteFromIndexAsync(long id);
     Task UndeleteNoteFromIndexAsync(long id);
-    Task PurgeDeletedNotesFromIndexAsync();
+    Task PurgeUserDeletedNotesFromIndexAsync(long userId);
 }

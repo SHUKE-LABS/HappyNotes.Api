@@ -561,6 +561,24 @@ public class NoteService(
     public async Task PurgeUserDeletedNotes(long userId)
     {
         await noteRepository.PurgeUserDeletedNotes(userId);
+
+        foreach (var syncNoteService in syncNoteServices)
+        {
+#pragma warning disable CS4014 // Fire-and-forget task execution is intentional
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await syncNoteService.PurgeDeletedNotes(userId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to sync purge deleted notes to service {ServiceType}, user ID: {UserId}",
+                        syncNoteService.GetType().Name, userId);
+                }
+            });
+#pragma warning restore CS4014
+        }
     }
 
     /// <summary>

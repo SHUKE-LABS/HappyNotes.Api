@@ -95,14 +95,24 @@ public class ManticoreSyncNoteService(
         }
     }
 
-    public async Task PurgeDeletedNotes()
+    public async Task PurgeDeletedNotes(long userId)
     {
-        // Note: PurgeDeletedNotes is a bulk operation that doesn't operate on individual notes
-        // For now, keep direct call to SearchService as it's not tied to specific note operations
-        // This could be migrated to queue later if needed for consistency
-        logger.LogInformation("PurgeDeletedNotes not yet migrated to queue - this is a bulk operation");
+        try
+        {
+            var payload = new ManticoreSearchSyncPayload
+            {
+                Action = "PURGE",
+                FullContent = string.Empty
+            };
 
-        // TODO: Consider implementing bulk queue operations or keeping direct calls for maintenance operations
-        await Task.CompletedTask;
+            var task = SyncTask.Create("manticoresearch", "PURGE", 0, userId, payload);
+            await syncQueueService.EnqueueAsync("manticoresearch", task);
+
+            logger.LogDebug("Successfully queued ManticoreSearch PURGE for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to queue purge sync to ManticoreSearch for user {UserId}", userId);
+        }
     }
 }

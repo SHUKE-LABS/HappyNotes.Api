@@ -139,10 +139,9 @@ public class TelegramSyncNoteService(
         await Task.CompletedTask;
     }
 
-    public async Task PurgeDeletedNotes()
+    public Task PurgeDeletedNotes(long userId)
     {
-        // As per user instruction, no action is taken for purging deleted notes on Telegram
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>
