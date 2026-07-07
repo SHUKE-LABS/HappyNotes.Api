@@ -207,7 +207,7 @@ public class MastodonSyncHandlerTests
 
         SetupUserAccount();
         _mockMastodonTootService
-            .Setup(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown))
+            .Setup(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown, It.IsAny<long>(), It.IsAny<long>()))
             .ReturnsAsync(new Status { Id = "toot-100" });
 
         var testNote = new Note { Id = TestNoteId, MastodonTootIds = null };
@@ -220,12 +220,41 @@ public class MastodonSyncHandlerTests
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
-        _mockMastodonTootService.Verify(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown), Times.Once);
+        _mockMastodonTootService.Verify(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown, It.IsAny<long>(), It.IsAny<long>()), Times.Once);
         _mockNoteRepository.Verify(r => r.UpdateAsync(
             It.Is<System.Linq.Expressions.Expression<Func<Note, Note>>>(expr =>
                 expr.Compile()(new Note()).MastodonTootIds == $"{TestUserAccountId}:toot-100"),
             It.IsAny<System.Linq.Expressions.Expression<Func<Note, bool>>>()
         ), Times.Once);
+    }
+
+    [Test]
+    public async Task ProcessCreateAction_PassesNoteIdAndUserIdToSendTootAsync()
+    {
+        // Arrange
+        var payload = new MastodonSyncPayload
+        {
+            InstanceUrl = TestInstanceUrl,
+            UserAccountId = TestUserAccountId,
+            FullContent = "Test content"
+        };
+        var task = CreateTask("CREATE", payload);
+
+        SetupUserAccount();
+        _mockMastodonTootService
+            .Setup(s => s.SendTootAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<long>(), It.IsAny<long>()))
+            .ReturnsAsync(new Status { Id = "toot-100" });
+        _mockNoteRepository
+            .Setup(r => r.GetFirstOrDefaultAsync(It.IsAny<System.Linq.Expressions.Expression<Func<Note, bool>>>(), null))
+            .ReturnsAsync(new Note { Id = TestNoteId });
+
+        // Act
+        await _mastodonSyncHandler.ProcessAsync(task, CancellationToken.None);
+
+        // Assert: noteId and userId are forwarded from the task
+        _mockMastodonTootService.Verify(s => s.SendTootAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+            TestNoteId, TestUserId), Times.Once);
     }
 
     [Test]
@@ -242,7 +271,7 @@ public class MastodonSyncHandlerTests
 
         SetupUserAccount();
         _mockMastodonTootService
-            .Setup(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown))
+            .Setup(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown, It.IsAny<long>(), It.IsAny<long>()))
             .ThrowsAsync(new Exception("Mastodon instance unreachable"));
 
         // Act
@@ -299,7 +328,7 @@ public class MastodonSyncHandlerTests
 
         SetupUserAccount();
         _mockMastodonTootService
-            .Setup(s => s.EditTootAsync(TestInstanceUrl, "plain-access-token", "toot-100", payload.FullContent, payload.IsPrivate, payload.IsMarkdown))
+            .Setup(s => s.EditTootAsync(TestInstanceUrl, "plain-access-token", "toot-100", payload.FullContent, payload.IsPrivate, payload.IsMarkdown, It.IsAny<long>(), It.IsAny<long>()))
             .ReturnsAsync(new Status { Id = "toot-100" });
 
         // Act
@@ -307,7 +336,7 @@ public class MastodonSyncHandlerTests
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
-        _mockMastodonTootService.Verify(s => s.EditTootAsync(TestInstanceUrl, "plain-access-token", "toot-100", payload.FullContent, payload.IsPrivate, payload.IsMarkdown), Times.Once);
+        _mockMastodonTootService.Verify(s => s.EditTootAsync(TestInstanceUrl, "plain-access-token", "toot-100", payload.FullContent, payload.IsPrivate, payload.IsMarkdown, It.IsAny<long>(), It.IsAny<long>()), Times.Once);
     }
 
     #endregion
@@ -398,7 +427,7 @@ public class MastodonSyncHandlerTests
 
         SetupUserAccount();
         _mockMastodonTootService
-            .Setup(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown))
+            .Setup(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown, It.IsAny<long>(), It.IsAny<long>()))
             .ReturnsAsync(new Status { Id = "toot-200" });
 
         var testNote = new Note { Id = TestNoteId, MastodonTootIds = null };
@@ -411,7 +440,7 @@ public class MastodonSyncHandlerTests
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
-        _mockMastodonTootService.Verify(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown), Times.Once);
+        _mockMastodonTootService.Verify(s => s.SendTootAsync(TestInstanceUrl, "plain-access-token", payload.FullContent, payload.IsPrivate, payload.IsMarkdown, It.IsAny<long>(), It.IsAny<long>()), Times.Once);
     }
 
     #endregion
