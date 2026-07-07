@@ -210,21 +210,36 @@ public class RedisSyncQueueService : ISyncQueueService
         var failedKey = GetQueueKey(service, "failed");
         var queueKey = GetQueueKey(service, "queue");
 
-        // Move all failed tasks back to main queue
-        var script = @"
-            local failed_key = KEYS[1]
-            local queue_key = KEYS[2]
-            local tasks = redis.call('LRANGE', failed_key, 0, -1)
-            if #tasks > 0 then
-                redis.call('DEL', failed_key)
-                for i = 1, #tasks do
-                    redis.call('LPUSH', queue_key, tasks[i])
-                end
-            end
-            return #tasks
-        ";
+        var rawTasks = await _database.ListRangeAsync(failedKey);
+        if (rawTasks.Length == 0)
+        {
+            _logger.LogInformation("No failed tasks to retry for service {Service}", service);
+            return;
+        }
 
-        var count = (int)await _database.ScriptEvaluateAsync(script, new RedisKey[] { failedKey, queueKey });
+        await _database.KeyDeleteAsync(failedKey);
+
+        var count = 0;
+        foreach (var raw in rawTasks)
+        {
+            try
+            {
+                var task = JsonSerializer.Deserialize<SyncTask<object>>((string)raw!, JsonSerializerConfig.Default);
+                if (task == null) continue;
+
+                task.AttemptCount = 0;
+                task.Metadata.Remove("error");
+                task.Metadata.Remove("failedAt");
+
+                var json = JsonSerializer.Serialize(task, JsonSerializerConfig.Default);
+                await _database.ListLeftPushAsync(queueKey, json);
+                count++;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Skipping undeserializable failed task for service {Service}", service);
+            }
+        }
 
         _logger.LogInformation("Retried {Count} failed tasks for service {Service}", count, service);
     }
