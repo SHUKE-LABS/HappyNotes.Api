@@ -165,9 +165,9 @@ public class MastodonSyncNoteService(
         await Task.CompletedTask;
     }
 
-    public async Task PurgeDeletedNotes()
+    public Task PurgeDeletedNotes(long userId)
     {
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private async Task<(List<MastodonSyncedInstance> toBeUpdated, List<MastodonSyncedInstance> toBeRemoved,

@@ -143,18 +143,19 @@ public class SearchService : ISearchService
         }
     }
 
-    public async Task PurgeDeletedNotesFromIndexAsync()
+    public async Task PurgeUserDeletedNotesFromIndexAsync(long userId)
     {
         var deleteQuery = new
         {
             index = "noteindex",
             query = new
             {
-                range = new
+                @bool = new
                 {
-                    deletedat = new
+                    must = new object[]
                     {
-                        gt = 0
+                        new { equals = new Dictionary<string, long> { { "UserId", userId } } },
+                        new { range = new { deletedat = new { gt = 0 } } }
                     }
                 }
             }

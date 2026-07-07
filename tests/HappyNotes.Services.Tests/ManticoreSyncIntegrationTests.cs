@@ -1,5 +1,6 @@
 using HappyNotes.Entities;
 using HappyNotes.Services.SyncQueue.Interfaces;
+using HappyNotes.Services.SyncQueue.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -159,13 +160,13 @@ public class ManticoreSyncIntegrationTests
     }
 
     [Test]
-    public async Task PurgeDeletedNotes_MultipleDeletedNotes_RemovesFromIndex()
+    public async Task PurgeDeletedNotes_MultipleDeletedNotes_EnqueuesTask()
     {
         // Act
-        await _syncService.PurgeDeletedNotes();
+        await _syncService.PurgeDeletedNotes(userId: 1);
 
         // Assert
-        // Assume purge succeeded if no exception; in a full test, verify no deleted notes remain in index.
+        _mockSyncQueueService.Verify(s => s.EnqueueAsync("manticoresearch", It.IsAny<SyncTask<ManticoreSearchSyncPayload>>()), Times.Once);
         _mockLogger.Verify(logger => logger.Log(
             It.Is<LogLevel>(level => level == LogLevel.Error),
             It.IsAny<EventId>(),

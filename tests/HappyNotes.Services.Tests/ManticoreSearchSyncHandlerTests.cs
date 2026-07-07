@@ -291,6 +291,50 @@ public class ManticoreSearchSyncHandlerTests
     }
 
     [Test]
+    public async Task ProcessAsync_PurgeAction_CallsPurgeUserDeletedNotesFromIndexAsync()
+    {
+        // Arrange
+        var payload = new ManticoreSearchSyncPayload
+        {
+            Action = "PURGE",
+            FullContent = string.Empty
+        };
+        var task = CreateTask("PURGE", 0, 123, payload);
+
+        _mockSearchService.Setup(x => x.PurgeUserDeletedNotesFromIndexAsync(123)).Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _manticoreSearchSyncHandler.ProcessAsync(task, CancellationToken.None);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        _mockSearchService.Verify(x => x.PurgeUserDeletedNotesFromIndexAsync(123), Times.Once);
+        _mockNoteRepository.Verify(x => x.Get(It.IsAny<long>()), Times.Never);
+    }
+
+    [Test]
+    public async Task ProcessAsync_PurgeAction_SearchServiceThrows_ReturnsRetryableFailure()
+    {
+        // Arrange
+        var payload = new ManticoreSearchSyncPayload
+        {
+            Action = "PURGE",
+            FullContent = string.Empty
+        };
+        var task = CreateTask("PURGE", 0, 123, payload);
+
+        _mockSearchService.Setup(x => x.PurgeUserDeletedNotesFromIndexAsync(123))
+            .ThrowsAsync(new Exception("ManticoreSearch connection failed"));
+
+        // Act
+        var result = await _manticoreSearchSyncHandler.ProcessAsync(task, CancellationToken.None);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.False);
+        Assert.That(result.ShouldRetry, Is.True);
+    }
+
+    [Test]
     public async Task ProcessAsync_JsonElementPayload_HandlesCorrectly()
     {
         // Arrange

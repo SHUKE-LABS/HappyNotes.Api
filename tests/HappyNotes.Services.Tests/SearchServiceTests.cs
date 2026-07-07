@@ -324,7 +324,7 @@ public class SearchServiceTests
     }
 
     [Test]
-    public async Task PurgeDeletedNotesFromIndexAsync_DeletedNotes_RemovesThem()
+    public async Task PurgeUserDeletedNotesFromIndexAsync_DeletedNotes_RemovesThem()
     {
         // Arrange
         _mockHandler.Protected()
@@ -340,7 +340,7 @@ public class SearchServiceTests
             });
 
         // Act
-        await _searchService.PurgeDeletedNotesFromIndexAsync();
+        await _searchService.PurgeUserDeletedNotesFromIndexAsync(123);
 
         // Assert
         _mockHandler.Protected().Verify(

@@ -64,6 +64,12 @@ public class ManticoreSearchSyncHandler : ISyncHandler
 
             _logger.LogDebug("Processing ManticoreSearch sync for note {NoteId}, action: {Action}", task.EntityId, payload.Action);
 
+            if (payload.Action == "PURGE")
+            {
+                var purgeSuccess = await HandlePurgeAsync(task.UserId);
+                return purgeSuccess ? SyncResult.Success() : SyncResult.Failure("Failed to PURGE user deleted notes from ManticoreSearch");
+            }
+
             var note = await _noteRepository.Get(task.EntityId);
             if (note is null)
             {
@@ -131,6 +137,21 @@ public class ManticoreSearchSyncHandler : ISyncHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete ManticoreSearch index entry for note {NoteId}", note.Id);
+            return false;
+        }
+    }
+
+    private async Task<bool> HandlePurgeAsync(long userId)
+    {
+        try
+        {
+            await _searchService.PurgeUserDeletedNotesFromIndexAsync(userId);
+            _logger.LogDebug("Successfully purged deleted notes from ManticoreSearch index for user {UserId}", userId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to purge deleted notes from ManticoreSearch index for user {UserId}", userId);
             return false;
         }
     }
