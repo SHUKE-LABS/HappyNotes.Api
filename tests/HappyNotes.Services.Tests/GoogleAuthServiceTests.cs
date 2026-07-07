@@ -67,7 +67,7 @@ public class GoogleAuthServiceTests
     [Test]
     public async Task ResolveOrCreateUserAsync_VerifiedEmailMatchesExistingUser_LinksWithoutCreatingUser()
     {
-        var existingUser = new User { Id = 7, Username = "existing", Email = "existing@example.com" };
+        var existingUser = new User { Id = 7, Username = "existing", Email = "existing@example.com", EmailVerified = 1 };
         _mockVerifier.Setup(v => v.VerifyAsync(It.IsAny<string>()))
             .ReturnsAsync(MakePayload("google-subject", "existing@example.com", true));
         _mockExternalLoginRepo.Setup(r => r.GetFirstOrDefaultAsync(It.IsAny<Expression<Func<UserExternalLogin, bool>>>(), null))
@@ -169,5 +169,45 @@ public class GoogleAuthServiceTests
         Assert.That(insertedLink, Is.Not.Null);
         Assert.That(insertedLink!.UserId, Is.EqualTo(101));
         Assert.That(insertedLink.ProviderSubject, Is.EqualTo("unverified-subject"));
+    }
+
+    [Test]
+    public async Task ResolveOrCreateUserAsync_VerifiedEmailMatchesUnverifiedExistingUser_CreatesNewAccountWithoutLinking()
+    {
+        // Pre-account-takeover guard: attacker pre-registered victim@gmail.com with EmailVerified=0.
+        // Google sign-in must NOT link to that account.
+        var attackerAccount = new User { Id = 5, Username = "attacker", Email = "victim@gmail.com", EmailVerified = 0 };
+        _mockVerifier.Setup(v => v.VerifyAsync(It.IsAny<string>()))
+            .ReturnsAsync(MakePayload("google-subject-victim", "victim@gmail.com", true));
+        _mockExternalLoginRepo.Setup(r => r.GetFirstOrDefaultAsync(It.IsAny<Expression<Func<UserExternalLogin, bool>>>(), null))
+            .ReturnsAsync((UserExternalLogin?)null);
+
+        // The fixed predicate (w.Email == email && w.EmailVerified == 1) won't match the attacker's
+        // account (EmailVerified=0), so GetFirstOrDefaultAsync returns null → CreateUserAsync is called.
+        _mockUserRepo.Setup(r => r.GetFirstOrDefaultAsync(It.IsAny<Expression<Func<User, bool>>>(), null))
+            .ReturnsAsync((User?)null);
+
+        User? insertedUser = null;
+        _mockUserRepo.Setup(r => r.InsertReturnIdentityAsync(It.IsAny<User>()))
+            .Callback<User>(u => insertedUser = u)
+            .ReturnsAsync(99);
+
+        UserExternalLogin? insertedLink = null;
+        _mockExternalLoginRepo.Setup(r => r.InsertAsync(It.IsAny<UserExternalLogin>()))
+            .Callback<UserExternalLogin>(l => insertedLink = l)
+            .ReturnsAsync(true);
+
+        var result = await _service.ResolveOrCreateUserAsync("valid-token");
+
+        _mockUserRepo.Verify(r => r.InsertReturnIdentityAsync(It.IsAny<User>()), Times.Once);
+        Assert.That(insertedUser, Is.Not.Null);
+        Assert.That(insertedUser!.Email, Is.EqualTo("victim@gmail.com"));
+        Assert.That(insertedUser.EmailVerified, Is.EqualTo(1));
+
+        Assert.That(result.Id, Is.EqualTo(99));
+        Assert.That(result.Id, Is.Not.EqualTo(attackerAccount.Id));
+        Assert.That(insertedLink, Is.Not.Null);
+        Assert.That(insertedLink!.UserId, Is.EqualTo(99));
+        Assert.That(insertedLink.ProviderSubject, Is.EqualTo("google-subject-victim"));
     }
 }

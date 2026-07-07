@@ -27,7 +27,7 @@ public class GoogleAuthService(
 
         var email = payload.Email.Trim().ToLower();
         var user = payload.EmailVerified
-            ? await userRepository.GetFirstOrDefaultAsync(w => w.Email == email)
+            ? await userRepository.GetFirstOrDefaultAsync(w => w.Email == email && w.EmailVerified == 1)
             : null;
         user ??= await CreateUserAsync(email, payload.EmailVerified);
 
