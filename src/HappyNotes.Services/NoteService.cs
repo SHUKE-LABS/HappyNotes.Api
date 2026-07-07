@@ -62,23 +62,13 @@ public class NoteService(
             // ate the exception to avoid interrupting the main process
         }
 
-        // Sync to all targets asynchronously
-        foreach (var syncNoteService in syncNoteServices)
+        try
         {
-#pragma warning disable CS4014 // Fire-and-forget task execution is intentional
-            Task.Run(async () =>
-            {
-                try
-                {
-                    await syncNoteService.SyncNewNote(note, fullContent);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to sync new note to service {ServiceType}, note ID: {NoteId}",
-                        syncNoteService.GetType().Name, note.Id);
-                }
-            });
-#pragma warning restore CS4014
+            await Task.WhenAll(syncNoteServices.Select(s => s.SyncNewNote(note, fullContent)));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to enqueue sync for new note {NoteId}", note.Id);
         }
         return note.Id;
     }
@@ -138,24 +128,16 @@ public class NoteService(
             await longNoteRepository.UpsertAsync(longNote, n => n.Id == id);
         }
 
-        foreach (var syncNoteService in syncNoteServices)
+        var updateResult = await noteRepository.UpdateAsync(newNote);
+        try
         {
-#pragma warning disable CS4014 // Fire-and-forget task execution is intentional
-            Task.Run(async () =>
-            {
-                try
-                {
-                    await syncNoteService.SyncEditNote(newNote, fullContent, existingNote);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to sync edit note to service {ServiceType}, note ID: {NoteId}",
-                        syncNoteService.GetType().Name, newNote.Id);
-                }
-            });
-#pragma warning restore CS4014
+            await Task.WhenAll(syncNoteServices.Select(s => s.SyncEditNote(newNote, fullContent, existingNote)));
         }
-        return await noteRepository.UpdateAsync(newNote);
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to enqueue sync for updated note {NoteId}", newNote.Id);
+        }
+        return updateResult;
     }
 
     public async Task<bool> SetIsPrivate(long userId, long id, bool isPrivate)
@@ -342,24 +324,16 @@ public class NoteService(
         }
 
         note.DeletedAt = timeProvider.GetUtcNow().ToUnixTimeSeconds();
-        foreach (var syncNoteService in syncNoteServices)
+        var deleteResult = await noteRepository.UpdateAsync(note);
+        try
         {
-#pragma warning disable CS4014 // Fire-and-forget task execution is intentional
-            Task.Run(async () =>
-            {
-                try
-                {
-                    await syncNoteService.SyncDeleteNote(note);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to sync delete note to service {ServiceType}, note ID: {NoteId}",
-                        syncNoteService.GetType().Name, note.Id);
-                }
-            });
-#pragma warning restore CS4014
+            await Task.WhenAll(syncNoteServices.Select(s => s.SyncDeleteNote(note)));
         }
-        return await noteRepository.UpdateAsync(note);
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to enqueue sync for deleted note {NoteId}", note.Id);
+        }
+        return deleteResult;
     }
 
     public async Task<bool> Undelete(long userId, long id)
@@ -391,22 +365,13 @@ public class NoteService(
         var undeletedNote = await noteRepository.Get(id);
         if (undeletedNote != null)
         {
-            foreach (var syncNoteService in syncNoteServices)
+            try
             {
-#pragma warning disable CS4014 // Fire-and-forget task execution is intentional
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        await syncNoteService.SyncUndeleteNote(undeletedNote);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Failed to sync undelete note to service {ServiceType}, note ID: {NoteId}",
-                            syncNoteService.GetType().Name, undeletedNote.Id);
-                    }
-                });
-#pragma warning restore CS4014
+                await Task.WhenAll(syncNoteServices.Select(s => s.SyncUndeleteNote(undeletedNote)));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to enqueue sync for undeleted note {NoteId}", undeletedNote.Id);
             }
         }
 
@@ -561,23 +526,13 @@ public class NoteService(
     public async Task PurgeUserDeletedNotes(long userId)
     {
         await noteRepository.PurgeUserDeletedNotes(userId);
-
-        foreach (var syncNoteService in syncNoteServices)
+        try
         {
-#pragma warning disable CS4014 // Fire-and-forget task execution is intentional
-            Task.Run(async () =>
-            {
-                try
-                {
-                    await syncNoteService.PurgeDeletedNotes(userId);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to sync purge deleted notes to service {ServiceType}, user ID: {UserId}",
-                        syncNoteService.GetType().Name, userId);
-                }
-            });
-#pragma warning restore CS4014
+            await Task.WhenAll(syncNoteServices.Select(s => s.PurgeDeletedNotes(userId)));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to enqueue sync purge for user {UserId}", userId);
         }
     }
 

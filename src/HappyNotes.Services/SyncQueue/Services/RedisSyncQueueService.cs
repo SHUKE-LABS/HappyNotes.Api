@@ -68,9 +68,22 @@ public class RedisSyncQueueService : ISyncQueueService
         var key = GetQueueKey(service, "queue");
         var json = JsonSerializer.Serialize(task, JsonSerializerConfig.Default);
 
-        await _database.ListRightPushAsync(key, json);
-
-        _logger.LogDebug("Enqueued task {TaskId} for service {Service}", task.Id, service);
+        const int maxAttempts = 3;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                await _database.ListRightPushAsync(key, json);
+                _logger.LogDebug("Enqueued task {TaskId} for service {Service}", task.Id, service);
+                return;
+            }
+            catch (RedisException ex) when (attempt < maxAttempts)
+            {
+                _logger.LogWarning(ex, "Redis enqueue attempt {Attempt}/{MaxAttempts} failed for task {TaskId}, retrying",
+                    attempt, maxAttempts, task.Id);
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt));
+            }
+        }
     }
 
     public async Task<SyncTask<T>?> DequeueAsync<T>(string service, CancellationToken cancellationToken)
