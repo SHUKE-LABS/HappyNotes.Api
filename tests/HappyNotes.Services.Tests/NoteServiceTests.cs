@@ -104,6 +104,35 @@ public class NoteServiceTests
     }
 
     [Test]
+    public async Task Post_WhenSyncEnqueueFails_NoteStillPostedAndErrorLogged()
+    {
+        // Arrange
+        var userId = 1L;
+        var request = new PostNoteRequest { Content = "Test note" };
+        var note = new Note { Id = 1, Content = "Test note", UserId = userId };
+
+        _mockMapper.Setup(m => m.Map<PostNoteRequest, Note>(request)).Returns(note);
+        _mockNoteRepository.Setup(r => r.InsertAsync(note)).ReturnsAsync(true);
+        _mockSyncNoteService
+            .Setup(s => s.SyncNewNote(It.IsAny<Note>(), It.IsAny<string>()))
+            .ThrowsAsync(new Exception("Redis unavailable"));
+
+        // Act — note operation must succeed despite sync failure
+        var result = await _noteService.Post(userId, request);
+
+        // Assert
+        Assert.That(result, Is.EqualTo(note.Id));
+        _mockLogger.Verify(
+            l => l.Log(
+                LogLevel.Error,
+                It.IsAny<Microsoft.Extensions.Logging.EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains(note.Id.ToString())),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Test]
     public async Task Get_WithExistingPublicNote_ReturnsNote()
     {
         // Arrange
@@ -285,18 +314,10 @@ public class NoteServiceTests
             .Returns(updatedNote);
         _mockNoteRepository.Setup(r => r.UpdateAsync(It.IsAny<Note>())).ReturnsAsync(true);
 
-        // Intercept the fire-and-forget fan-out deterministically via a TCS callback.
-        var syncCalledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _mockSyncNoteService
-            .Setup(s => s.SyncEditNote(It.IsAny<Note>(), It.IsAny<string>(), It.IsAny<Note>()))
-            .Callback<Note, string, Note>((_, _, _) => syncCalledTcs.TrySetResult(true))
-            .Returns(Task.CompletedTask);
-
         // Act
         await _noteService.SetIsPrivate(userId, noteId, false);
 
-        // Assert - wait for the Task.Run continuation to invoke SyncEditNote, then verify shape
-        await syncCalledTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // Assert — sync is now awaited inline; verify directly
         _mockSyncNoteService.Verify(
             s => s.SyncEditNote(
                 It.Is<Note>(n => n.IsPrivate == false),
@@ -413,8 +434,7 @@ public class NoteServiceTests
         Assert.That(result, Is.True);
         _mockNoteRepository.Verify(r => r.UndeleteAsync(noteId), Times.Once);
 
-        // Verify sync services are called for undelete
-        await Task.Delay(100); // Allow async tasks to complete
+        // Sync is now awaited inline; verify directly
         _mockSyncNoteService.Verify(s => s.SyncUndeleteNote(It.Is<Note>(n => n.Id == noteId && n.DeletedAt == null)), Times.Once);
     }
 
