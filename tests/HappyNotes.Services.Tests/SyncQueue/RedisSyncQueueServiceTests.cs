@@ -172,4 +172,33 @@ public class RedisSyncQueueServiceTests
         Assert.That(stats.PendingCount, Is.EqualTo(0));
         Assert.That(stats.FailedCount, Is.EqualTo(0));
     }
+
+    [Test]
+    public async Task RetryFailedTasksAsync_ResetsAttemptCount_SoSubsequentFailureIsRescheduledNotBlacklisted()
+    {
+        // Arrange: task exhausted retries, sitting in failed queue
+        var task = SyncTask.Create("telegram", "CREATE", 123, 456, new { content = "test" });
+        task.AttemptCount = 3; // simulates MaxRetryAttempts
+        await _queueService.MoveToFailedAsync("telegram", task, "transient error");
+
+        var statsBefore = await _queueService.GetStatsAsync("telegram");
+        Assert.That(statsBefore.FailedCount, Is.EqualTo(1));
+
+        // Act
+        await _queueService.RetryFailedTasksAsync("telegram");
+
+        // Assert: task is back in the ready queue with AttemptCount reset
+        var statsAfter = await _queueService.GetStatsAsync("telegram");
+        Assert.That(statsAfter.FailedCount, Is.EqualTo(0));
+        Assert.That(statsAfter.PendingCount, Is.EqualTo(1));
+
+        var dequeued = await _queueService.DequeueAsync<object>("telegram", CancellationToken.None);
+        Assert.That(dequeued, Is.Not.Null);
+        Assert.That(dequeued!.AttemptCount, Is.EqualTo(0),
+            "AttemptCount must be reset so the task receives a full retry budget");
+        Assert.That(dequeued.Metadata.ContainsKey("error"), Is.False,
+            "error metadata must be cleared on retry");
+        Assert.That(dequeued.Metadata.ContainsKey("failedAt"), Is.False,
+            "failedAt metadata must be cleared on retry");
+    }
 }
