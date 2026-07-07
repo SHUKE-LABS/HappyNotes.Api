@@ -1,0 +1,19 @@
+<Project>
+  <ItemGroup>
+    <!-- AutoMapper 12.0.1 / GHSA-rvv3-g6hj-g44x (CVE-2026-32933)
+         DoS via uncontrolled recursion when mapping deeply-nested self-referential graphs.
+         Non-exploitable here: entity graph terminates at Note.User→User; User has no
+         back-navigation to Note. No untrusted self-referential input reaches IMapper.Map.
+         Free patched line does not exist — AutoMapper ≥ 15.x requires a paid license.
+         Re-evaluate if self-referential DTOs or entities are introduced. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-rvv3-g6hj-g44x" />
+
+    <!-- SQLitePCLRaw.lib.e_sqlite3 2.1.11 / GHSA-2m69-gcr7-jv3q (CVE-2025-6965)
+         Memory corruption in bundled SQLite < 3.50.2.
+         Non-exploitable here: test-only package (no production reference); localhost
+         test execution with trusted data only. Microsoft.Data.Sqlite 10.0.9 nuspec
+         hard-pins SQLitePCLRaw.core = 2.1.11, blocking any 3.x upgrade path.
+         Re-evaluate when Microsoft.Data.Sqlite moves to SQLitePCLRaw 3.x. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+</Project>
