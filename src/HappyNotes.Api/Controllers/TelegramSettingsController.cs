@@ -46,7 +46,10 @@ public class TelegramSettingsController(
                 $"SyncType: {settingsDto.SyncType} has already been set to channel: {existingSetting.ChannelId}");
         }
 
-        // todo: more verification before inserting the settings
+        if (string.IsNullOrWhiteSpace(settingsDto.EncryptedToken))
+            throw new ArgumentException("EncryptedToken is required");
+        if (string.IsNullOrWhiteSpace(settingsDto.ChannelId))
+            throw new ArgumentException("ChannelId is required");
         var now = DateTime.UtcNow.ToUnixTimeSeconds();
         var settings = new TelegramSettings
         {
