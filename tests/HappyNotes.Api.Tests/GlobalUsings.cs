@@ -1,2 +1,2 @@
-global using NUnit.Framework;
 global using System.Security.Claims;
+global using NUnit.Framework;
