@@ -17,7 +17,7 @@ public class MastodonTootService(ILogger<MastodonTootService> logger
         string.Join(' ', longText.GetTags().Where(t => !t.StartsWith("@")).Select(t => $"#{t}"));
 
     public async Task<Status> SendTootAsync(string instanceUrl, string accessToken, string text, bool isPrivate,
-        bool isMarkdown = false)
+        bool isMarkdown = false, long noteId = 0, long userId = 0)
     {
         logger.LogInformation("Starting SendTootAsync for instance: {InstanceUrl}, textLength: {TextLength}, isPrivate: {IsPrivate}, isMarkdown: {IsMarkdown}",
             instanceUrl, text.Length, isPrivate, isMarkdown);
@@ -43,7 +43,7 @@ public class MastodonTootService(ILogger<MastodonTootService> logger
             }
 
             logger.LogDebug("Processing markdown images for {InstanceUrl}", instanceUrl);
-            var (processedText, mediaIds) = await ProcessMarkdownImagesAsync(client, fullText);
+            var (processedText, mediaIds) = await ProcessMarkdownImagesAsync(client, fullText, noteId, userId);
 
             logger.LogDebug("Publishing markdown status with {MediaCount} media attachments to {InstanceUrl}",
                 mediaIds.Count(), instanceUrl);
@@ -109,7 +109,9 @@ public class MastodonTootService(ILogger<MastodonTootService> logger
         string tootId,
         string newText,
         bool isPrivate,
-        bool isMarkdown = false)
+        bool isMarkdown = false,
+        long noteId = 0,
+        long userId = 0)
     {
         logger.LogInformation("Starting EditTootAsync for instance: {InstanceUrl}, tootId: {TootId}, textLength: {TextLength}, isPrivate: {IsPrivate}, isMarkdown: {IsMarkdown}",
             instanceUrl, tootId, newText.Length, isPrivate, isMarkdown);
@@ -140,7 +142,7 @@ public class MastodonTootService(ILogger<MastodonTootService> logger
             if (isMarkdown)
             {
                 logger.LogDebug("Processing markdown images for edit on {InstanceUrl}", instanceUrl);
-                (processedText, mediaIds) = await ProcessMarkdownImagesAsync(client, newText);
+                (processedText, mediaIds) = await ProcessMarkdownImagesAsync(client, newText, noteId, userId);
             }
 
             // If visibility changed, delete and recreate
@@ -276,7 +278,9 @@ public class MastodonTootService(ILogger<MastodonTootService> logger
 
     private async Task<(string text, IEnumerable<string> mediaIds)> ProcessMarkdownImagesAsync(
         MastodonClient client,
-        string markdownText)
+        string markdownText,
+        long noteId = 0,
+        long userId = 0)
     {
         var imgInfos = markdownText.GetImgInfos();
         if (imgInfos.Count == 0)
@@ -330,7 +334,10 @@ public class MastodonTootService(ILogger<MastodonTootService> logger
 
         if (successfulUploads.Count < matches.Count)
         {
-            // todo: collect all failure images and send a message to user that some images failed to upload
+            var failedUrls = failedIndexes.Select(i => matches[i].ImgUrl).ToList();
+            logger.LogWarning(
+                "Partial image upload failure for note {NoteId} user {UserId}: {FailedCount}/{TotalCount} images failed. FailedUrls: {FailedUrls}",
+                noteId, userId, failedIndexes.Count, matches.Count, failedUrls);
         }
 
         // Replace markdown image syntax with reference text including alt text

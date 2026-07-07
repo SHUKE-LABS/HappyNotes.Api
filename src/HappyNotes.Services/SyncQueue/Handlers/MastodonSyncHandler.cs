@@ -108,7 +108,9 @@ public class MastodonSyncHandler : ISyncHandler
                 accessToken,
                 payload.FullContent,
                 payload.IsPrivate,
-                payload.IsMarkdown);
+                payload.IsMarkdown,
+                task.EntityId,
+                task.UserId);
 
             // Add the toot ID to the note
             await AddTootIdToNote(task.EntityId, payload.UserAccountId, status.Id);
@@ -144,7 +146,9 @@ public class MastodonSyncHandler : ISyncHandler
                 payload.TootId,
                 payload.FullContent,
                 payload.IsPrivate,
-                payload.IsMarkdown);
+                payload.IsMarkdown,
+                task.EntityId,
+                task.UserId);
 
             _logger.LogDebug("Successfully updated toot {TootId} for task {TaskId}",
                 payload.TootId, task.Id);
