@@ -16,6 +16,7 @@ namespace HappyNotes.Services.Tests;
 public class ManticoreSearchSyncHandlerTests
 {
     private Mock<ISearchService> _mockSearchService;
+    private Mock<IEmbeddingService> _mockEmbeddingService;
     private Mock<INoteRepository> _mockNoteRepository;
     private Mock<IOptions<SyncQueueOptions>> _mockSyncQueueOptions;
     private Mock<ILogger<ManticoreSearchSyncHandler>> _mockLogger;
@@ -27,6 +28,7 @@ public class ManticoreSearchSyncHandlerTests
     public void Setup()
     {
         _mockSearchService = new Mock<ISearchService>();
+        _mockEmbeddingService = new Mock<IEmbeddingService>();
         _mockNoteRepository = new Mock<INoteRepository>();
         _mockSyncQueueOptions = new Mock<IOptions<SyncQueueOptions>>();
         _mockLogger = new Mock<ILogger<ManticoreSearchSyncHandler>>();
@@ -34,8 +36,14 @@ public class ManticoreSearchSyncHandlerTests
         var syncQueueOptions = new SyncQueueOptions();
         _mockSyncQueueOptions.Setup(x => x.Value).Returns(syncQueueOptions);
 
+        // Default: embedding backend "unavailable" so existing content-sync assertions see a null vector.
+        // Tests that exercise the vector path override this.
+        _mockEmbeddingService.Setup(x => x.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((float[]?)null);
+
         _manticoreSearchSyncHandler = new ManticoreSearchSyncHandler(
             _mockSearchService.Object,
+            _mockEmbeddingService.Object,
             _mockNoteRepository.Object,
             _mockSyncQueueOptions.Object,
             _mockLogger.Object);
@@ -62,6 +70,27 @@ public class ManticoreSearchSyncHandlerTests
         // Assert
         Assert.That(result.IsSuccess, Is.True);
         _mockSearchService.Verify(x => x.SyncNoteToIndexAsync(note, "Test content"), Times.Once);
+    }
+
+    [Test]
+    public async Task ProcessAsync_CreateAction_EmbedsContent_AndPassesVectorToIndex()
+    {
+        // Arrange
+        var note = new Note { Id = 1, UserId = 123, Content = "Test content" };
+        var payload = new ManticoreSearchSyncPayload { Action = "CREATE", FullContent = "Test content" };
+        var task = CreateTask("CREATE", 1, 123, payload);
+        var vector = new[] { 0.1f, 0.2f, 0.3f };
+
+        _mockNoteRepository.Setup(x => x.Get(1)).ReturnsAsync(note);
+        _mockEmbeddingService.Setup(x => x.EmbedAsync("Test content", It.IsAny<CancellationToken>())).ReturnsAsync(vector);
+
+        // Act
+        var result = await _manticoreSearchSyncHandler.ProcessAsync(task, CancellationToken.None);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        _mockEmbeddingService.Verify(x => x.EmbedAsync("Test content", It.IsAny<CancellationToken>()), Times.Once);
+        _mockSearchService.Verify(x => x.SyncNoteToIndexAsync(note, "Test content", vector), Times.Once);
     }
 
     private SyncTask CreateTask(string action, long entityId, long userId, ManticoreSearchSyncPayload payload)

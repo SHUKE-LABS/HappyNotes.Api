@@ -16,6 +16,8 @@ namespace HappyNotes.Services;
 
 public class NoteService(
     ISearchService searchService,
+    IEmbeddingService embeddingService,
+    SemanticSearchOptions semanticOptions,
     IEnumerable<ISyncNoteService> syncNoteServices,
     INoteTagService noteTagService,
     INoteRepository noteRepository,
@@ -218,8 +220,84 @@ public class NoteService(
 
     public async Task<PageData<Note>> SearchUserNotes(long userId, int pageSize, int pageNumber, string keyword, NoteFilterType filter = NoteFilterType.Normal)
     {
+        if (!semanticOptions.Enabled)
+        {
+            return await _KeywordOnlySearch(userId, pageSize, pageNumber, keyword, filter);
+        }
+
+        // Compute semantic candidates once per query, then dedup them against the keyword hits.
+        // Falls back to keyword-only whenever the embedding backend or KNN search is unavailable.
+        List<long>? semanticExtra = null;
+        var keywordTotal = 0;
+        var keywordCappedIds = new List<long>();
+        try
+        {
+            var queryVector = await embeddingService.EmbedAsync(keyword);
+            if (queryVector != null)
+            {
+                var semanticIds = await searchService.GetSemanticNoteIdsAsync(userId, queryVector, filter, semanticOptions.TopK, semanticOptions.MaxDistance);
+                // Capped keyword set is used ONLY to dedup semantic candidates and to size the merged total —
+                // keyword paging itself is never capped (deep pages are fetched directly below).
+                (keywordCappedIds, keywordTotal) = await searchService.GetNoteIdsByKeywordAsync(userId, keyword, 1, semanticOptions.KeywordMergeCap, filter);
+                var keywordSet = keywordCappedIds.ToHashSet();
+                semanticExtra = semanticIds.Where(id => !keywordSet.Contains(id)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Semantic search unavailable; falling back to keyword-only search");
+            semanticExtra = null;
+        }
+
+        if (semanticExtra == null)
+        {
+            return await _KeywordOnlySearch(userId, pageSize, pageNumber, keyword, filter);
+        }
+
+        // Merged order: all keyword hits (positions [0, keywordTotal)) first, then the deduped semantic
+        // extras (positions [keywordTotal, keywordTotal + semanticExtra.Count)). Page over that virtual list.
+        var start = (pageNumber - 1) * pageSize;
+
+        var mergedIds = new List<long>(pageSize);
+        if (start < keywordTotal)
+        {
+            // Keyword slice for this page: reuse the capped set when the window fits inside it,
+            // otherwise query Manticore directly so deep pages past the cap still work.
+            if (start + pageSize <= keywordCappedIds.Count)
+            {
+                mergedIds.AddRange(keywordCappedIds.GetRange(start, Math.Min(pageSize, keywordCappedIds.Count - start)));
+            }
+            else
+            {
+                var (keywordPageIds, _) = await searchService.GetNoteIdsByKeywordAsync(userId, keyword, pageNumber, pageSize, filter);
+                mergedIds.AddRange(keywordPageIds);
+            }
+        }
+
+        // Semantic slice for this page, in semantic-local coordinates.
+        var semStart = Math.Max(0, start - keywordTotal);
+        var semEnd = Math.Min(semanticExtra.Count, start + pageSize - keywordTotal);
+        for (var i = semStart; i < semEnd; i++)
+        {
+            mergedIds.Add(semanticExtra[i]);
+        }
+
+        var mergedTotal = keywordTotal + semanticExtra.Count;
+        var notes = await _GetNotesByIdsOrdered(mergedIds);
+        return new PageData<Note>()
+        {
+            DataList = notes,
+            PageIndex = pageNumber,
+            PageSize = pageSize,
+            TotalCount = mergedTotal,
+        };
+    }
+
+    private async Task<PageData<Note>> _KeywordOnlySearch(long userId, int pageSize, int pageNumber, string keyword, NoteFilterType filter)
+    {
         var (noteIds, total) = await searchService.GetNoteIdsByKeywordAsync(userId, keyword, pageNumber, pageSize, filter);
-        var notes = await _GetNotesByIds(noteIds);
+        // Preserve Manticore's score/date ranking (the SQL IN fetch does not), consistent with the merged path.
+        var notes = await _GetNotesByIdsOrdered(noteIds);
         return new PageData<Note>()
         {
             DataList = notes,
@@ -549,5 +627,25 @@ public class NoteService(
         }
 
         return await noteRepository.GetListByIdsAsync(noteIds.ToArray());
+    }
+
+    /// <summary>
+    /// Fetches notes by id and returns them in the exact order of <paramref name="noteIds"/>.
+    /// GetListByIdsAsync uses a SQL IN clause which does not preserve order, so the merged
+    /// keyword-then-semantic ranking must be re-applied here.
+    /// </summary>
+    private async Task<IList<Note>> _GetNotesByIdsOrdered(IList<long> noteIds)
+    {
+        var notes = await _GetNotesByIds(noteIds);
+        var byId = notes.ToDictionary(n => n.Id);
+        var ordered = new List<Note>(noteIds.Count);
+        foreach (var id in noteIds)
+        {
+            if (byId.TryGetValue(id, out var note))
+            {
+                ordered.Add(note);
+            }
+        }
+        return ordered;
     }
 }

@@ -15,6 +15,7 @@ namespace HappyNotes.Services.SyncQueue.Handlers;
 public class ManticoreSearchSyncHandler : ISyncHandler
 {
     private readonly ISearchService _searchService;
+    private readonly IEmbeddingService _embeddingService;
     private readonly INoteRepository _noteRepository;
     private readonly SyncQueueOptions _options;
     private readonly ILogger<ManticoreSearchSyncHandler> _logger;
@@ -27,11 +28,13 @@ public class ManticoreSearchSyncHandler : ISyncHandler
 
     public ManticoreSearchSyncHandler(
         ISearchService searchService,
+        IEmbeddingService embeddingService,
         INoteRepository noteRepository,
         IOptions<SyncQueueOptions> options,
         ILogger<ManticoreSearchSyncHandler> logger)
     {
         _searchService = searchService;
+        _embeddingService = embeddingService;
         _noteRepository = noteRepository;
         _options = options.Value;
         _logger = logger;
@@ -100,8 +103,9 @@ public class ManticoreSearchSyncHandler : ISyncHandler
     {
         try
         {
-            await _searchService.SyncNoteToIndexAsync(note, payload.FullContent);
-            _logger.LogDebug("Successfully created ManticoreSearch index entry for note {NoteId}", note.Id);
+            var embedding = await _embeddingService.EmbedAsync(payload.FullContent);
+            await _searchService.SyncNoteToIndexAsync(note, payload.FullContent, embedding);
+            _logger.LogDebug("Successfully created ManticoreSearch index entry for note {NoteId} (vector: {HasVector})", note.Id, embedding != null);
             return true;
         }
         catch (Exception ex)
@@ -115,8 +119,12 @@ public class ManticoreSearchSyncHandler : ISyncHandler
     {
         try
         {
-            await _searchService.SyncNoteToIndexAsync(note, payload.FullContent);
-            _logger.LogDebug("Successfully updated ManticoreSearch index entry for note {NoteId}", note.Id);
+            // Regenerate the vector on every content change: REPLACE rewrites the whole doc, so we must
+            // re-supply the (fresh) vector here or it would be lost. A null embedding (backend down)
+            // degrades this note to keyword-only until the next successful edit or backfill run.
+            var embedding = await _embeddingService.EmbedAsync(payload.FullContent);
+            await _searchService.SyncNoteToIndexAsync(note, payload.FullContent, embedding);
+            _logger.LogDebug("Successfully updated ManticoreSearch index entry for note {NoteId} (vector: {HasVector})", note.Id, embedding != null);
             return true;
         }
         catch (Exception ex)

@@ -21,6 +21,8 @@ namespace HappyNotes.Services.Tests;
 public class NoteServiceTests
 {
     private Mock<ISearchService> _searchService;
+    private Mock<IEmbeddingService> _mockEmbeddingService;
+    private SemanticSearchOptions _semanticSearchOptions;
     private Mock<ISyncNoteService> _mockSyncNoteService;
     private Mock<INoteTagService> _mockNoteTagService;
     private Mock<INoteRepository> _mockNoteRepository;
@@ -34,6 +36,8 @@ public class NoteServiceTests
     public void Setup()
     {
         _searchService = new Mock<ISearchService>();
+        _mockEmbeddingService = new Mock<IEmbeddingService>();
+        _semanticSearchOptions = new SemanticSearchOptions { Enabled = false };
         _mockSyncNoteService = new Mock<ISyncNoteService>();
         var syncServices = new[] { _mockSyncNoteService.Object };
         _mockNoteTagService = new Mock<INoteTagService>();
@@ -53,6 +57,8 @@ public class NoteServiceTests
 
         _noteService = new NoteService(
             _searchService.Object,
+            _mockEmbeddingService.Object,
+            _semanticSearchOptions,
             syncServices,
             _mockNoteTagService.Object,
             _mockNoteRepository.Object,
@@ -625,6 +631,8 @@ public class NoteServiceTests
     public class GetTimestampsTests
     {
         private Mock<ISearchService> _searchService;
+        private Mock<IEmbeddingService> _mockEmbeddingService;
+        private SemanticSearchOptions _semanticSearchOptions;
         private Mock<ISyncNoteService> _mockSyncNoteService;
         private Mock<INoteTagService> _mockNoteTagService;
         private Mock<INoteRepository> _mockNoteRepository;
@@ -638,6 +646,8 @@ public class NoteServiceTests
         public void Setup()
         {
             _searchService = new Mock<ISearchService>();
+            _mockEmbeddingService = new Mock<IEmbeddingService>();
+            _semanticSearchOptions = new SemanticSearchOptions { Enabled = false };
             _mockSyncNoteService = new Mock<ISyncNoteService>();
             var syncServices = new[] { _mockSyncNoteService.Object };
             _mockNoteTagService = new Mock<INoteTagService>();
@@ -657,6 +667,8 @@ public class NoteServiceTests
 
             _noteService = new NoteService(
                 _searchService.Object,
+                _mockEmbeddingService.Object,
+                _semanticSearchOptions,
                 syncServices,
                 _mockNoteTagService.Object,
                 _mockNoteRepository.Object,
