@@ -69,25 +69,29 @@ public class SearchService : ISearchService
         return (noteIdList, (int)total);
     }
 
-    public async Task SyncNoteToIndexAsync(Note note, string fullContent)
+    public async Task SyncNoteToIndexAsync(Note note, string fullContent, float[]? embedding = null)
     {
-        var requestBody = new
+        var doc = new Dictionary<string, object>
         {
-            index = "noteindex",
-            id = note.Id,
-            doc = new
-            {
-                userid = note.UserId,
-                islong = note.IsLong ? 1 : 0,
-                isprivate = note.IsPrivate ? 1 : 0,
-                ismarkdown = note.IsMarkdown ? 1 : 0,
-                content = fullContent,
-                tags = string.Join(" ", fullContent.GetTags()),
-                createdat = note.CreatedAt,
-                updatedat = note.UpdatedAt ?? 0,
-                deletedat = note.DeletedAt ?? 0
-            }
+            ["userid"] = note.UserId,
+            ["islong"] = note.IsLong ? 1 : 0,
+            ["isprivate"] = note.IsPrivate ? 1 : 0,
+            ["ismarkdown"] = note.IsMarkdown ? 1 : 0,
+            ["content"] = fullContent,
+            ["tags"] = string.Join(" ", fullContent.GetTags()),
+            ["createdat"] = note.CreatedAt,
+            ["updatedat"] = note.UpdatedAt ?? 0,
+            ["deletedat"] = note.DeletedAt ?? 0
         };
+
+        // The vector rides in the same REPLACE as the content. REPLACE rewrites the whole doc, so a note's
+        // vector is only preserved when the writer that rewrites the content also supplies the vector.
+        if (embedding != null)
+        {
+            doc["embedding"] = embedding;
+        }
+
+        var requestBody = new { index = "noteindex", id = note.Id, doc };
 
         var content = new StringContent(JsonSerializer.Serialize(requestBody, JsonSerializerConfig.Default), Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync("json/replace", content);
@@ -97,6 +101,64 @@ public class SearchService : ISearchService
             var errorContent = await response.Content.ReadAsStringAsync();
             throw new Exception($"ManticoreSearch replace operation failed: {response.StatusCode} - {errorContent}");
         }
+    }
+
+    public async Task<List<long>> GetSemanticNoteIdsAsync(long userId, float[] queryVector, NoteFilterType filter, int k, double maxDistance = 0)
+    {
+        if (queryVector.Length == 0 || k <= 0)
+            return new List<long>();
+
+        // knn.query carries the search vector; the sibling top-level "query" carries the owner/delete-state
+        // filter (identical clauses to the keyword path) so vector search can never leak another user's or a
+        // soft-deleted note. See https://manual.manticoresearch.com/Searching/KNN (filter via sibling query).
+        var queryObject = new Dictionary<string, object>
+        {
+            { "table", "noteindex" },
+            {
+                "knn", new Dictionary<string, object>
+                {
+                    { "field", "embedding" },
+                    { "query", queryVector },
+                    { "k", k }
+                }
+            },
+            {
+                "query", new Dictionary<string, object>
+                {
+                    { "bool", new Dictionary<string, object> { { "must", _BuildOwnerFilterClauses(userId, filter) } } }
+                }
+            },
+            { "limit", k },
+            { "_source", new[] { "id" } }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(queryObject, JsonSerializerConfig.Default), Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync("json/search", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            throw new Exception($"ManticoreSearch KNN search failed: {response.StatusCode} - {errorContent}");
+        }
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var searchResult = JsonSerializer.Deserialize<ManticoreSearchResult>(responseContent, JsonSerializerConfig.Default);
+
+        var noteIdList = new List<long>();
+        if (searchResult?.hits?.hits != null)
+        {
+            foreach (var hit in searchResult.hits.hits)
+            {
+                if (hit?._source == null)
+                    continue;
+                // Hits arrive nearest-first; apply the optional distance ceiling.
+                if (maxDistance > 0 && hit._knn_dist > maxDistance)
+                    continue;
+                noteIdList.Add(hit._id);
+            }
+        }
+
+        return noteIdList;
     }
 
     public async Task DeleteNoteFromIndexAsync(long id)
@@ -227,18 +289,10 @@ public class SearchService : ISearchService
                         { "minimum_should_match", 1 } // At least one of the "should" clauses must match
                     }
                 }
-            },
-            new Dictionary<string, object> { { "equals", new Dictionary<string, long> { { "UserId", userId } } } }
+            }
         };
-
-        if (filter == NoteFilterType.Normal)
-        {
-            mustClauses.Add(new Dictionary<string, object> { { "equals", new Dictionary<string, long> { { "DeletedAt", 0 } } } });
-        }
-        else
-        {
-            mustClauses.Add(new Dictionary<string, object> { { "range", new Dictionary<string, object> { { "DeletedAt", new Dictionary<string, long> { { "gt", 0 } } } } } });
-        }
+        // Owner + delete-state isolation is shared verbatim with the KNN path via _BuildOwnerFilterClauses.
+        mustClauses.AddRange(_BuildOwnerFilterClauses(userId, filter));
         var source = new[] { "id" };
 
         return new Dictionary<string, object>
@@ -264,5 +318,29 @@ public class SearchService : ISearchService
             },
             {"_source", source}
         };
+    }
+
+    /// <summary>
+    /// Owner + delete-state isolation clauses, shared by the keyword and KNN search paths so vector
+    /// search enforces exactly the same access boundary: own notes only (private included), and either
+    /// non-deleted (Normal) or deleted-only (Deleted) — never another user's or a soft-deleted note.
+    /// </summary>
+    private static List<object> _BuildOwnerFilterClauses(long userId, NoteFilterType filter)
+    {
+        var clauses = new List<object>
+        {
+            new Dictionary<string, object> { { "equals", new Dictionary<string, long> { { "UserId", userId } } } }
+        };
+
+        if (filter == NoteFilterType.Normal)
+        {
+            clauses.Add(new Dictionary<string, object> { { "equals", new Dictionary<string, long> { { "DeletedAt", 0 } } } });
+        }
+        else
+        {
+            clauses.Add(new Dictionary<string, object> { { "range", new Dictionary<string, object> { { "DeletedAt", new Dictionary<string, long> { { "gt", 0 } } } } } });
+        }
+
+        return clauses;
     }
 }

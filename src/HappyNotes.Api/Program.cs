@@ -64,6 +64,9 @@ if (manticoreOptions != null)
     builder.Services.AddSingleton(manticoreOptions);
 }
 
+var semanticSearchOptions = builder.Configuration.GetSection("SemanticSearch").Get<SemanticSearchOptions>() ?? new SemanticSearchOptions();
+builder.Services.AddSingleton(semanticSearchOptions);
+
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddCors(SetupCors(builder));

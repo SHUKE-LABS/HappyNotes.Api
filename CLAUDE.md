@@ -71,7 +71,7 @@ The application uses a **Redis-based queue system** for reliable background sync
 - ✅ **Telegram**: Full queue integration with channel management
 - ✅ **Mastodon**: Complete queue integration with instance management
 - ✅ **Fanfou**: Queue integration via OAuth 1.0a; per-user sync rule (all / public-only / `#fanfou` tag)
-- ⏳ **ManticoreSearch**: Not yet migrated (still uses direct sync)
+- ✅ **ManticoreSearch**: SyncQueue-integrated (`ManticoreSyncNoteService` enqueuer + `ManticoreSearchSyncHandler` consumer). Indexes keyword content **and**, when semantic search is enabled, the note's embedding vector — both written in one REPLACE per note.
 
 ### Configuration
 - **Redis Connection**: Set `REDIS_CONNECTION_STRING` environment variable
@@ -83,3 +83,16 @@ The application uses a **Redis-based queue system** for reliable background sync
 - **Task Recovery**: Automatic recovery of expired/failed tasks
 - **Service Isolation**: Per-service queues prevent cross-contamination
 - **Graceful Degradation**: Queue failures don't crash the main application
+
+## Search (keyword + semantic)
+
+Note search runs over the Manticore `noteindex` table.
+
+- **Keyword** (always on): Manticore full-text, bigram-tokenized for CJK. Built by `SearchService._BuildNoteSearchQuery` and paged directly by Manticore.
+- **Semantic (vector)** (opt-in via `SemanticSearch:Enabled`): a `float_vector` KNN attribute (HNSW, cosine) on the **same** `noteindex`. Query-time flow: embed the query, run a Manticore KNN search (`GetSemanticNoteIdsAsync`), then merge into the keyword results — keyword hits first, then deduped semantic candidates by similarity — and page over the merged list. Transparent to clients: same `/notes/search` response shape.
+- **Embeddings — self-hosted by default** (privacy): generated via a self-hosted endpoint (Ollama `bge-m3`, 1024-dim, cosine) by `EmbeddingService`. Note text never leaves our infrastructure and there is no per-token cost. Switching to a hosted embedding API is a config-only change (re-embed required). Vectors are generated in the SyncQueue handler (background), never in the HTTP request path.
+- **Isolation**: the KNN query applies the **same** owner (`UserId`) + delete-state (`DeletedAt`) filters as the keyword path (`_BuildOwnerFilterClauses`), so vector search never leaks another user's or a soft-deleted note; a user's own private notes stay findable (parity with keyword search).
+- **Graceful fallback**: if embeddings or KNN are unavailable, search degrades to keyword-only with no error.
+- **Write-path note**: Manticore requires REPLACE (not UPDATE) to change a full-text field or a `float_vector`, so a single writer rewrites content + vector together to avoid clobbering the vector. Deletes/undeletes stay numeric `deletedat` updates.
+- **Config**: `SemanticSearch` section in `appsettings.json` (`EmbeddingEndpoint`, `EmbeddingModel`, `Dimensions`, `Similarity`, `TopK`, `MaxDistance`, `KeywordMergeCap`, `EmbeddingTimeoutSeconds`, backfill options). The `noteindex` schema (incl. `Embedding float_vector`) lives in `docker/create_table.sql`; adding the column requires table recreation + reindex.
+- **Backfill**: existing notes are embedded by the resumable, batched `NoteVectorBackfillService`, triggered off-peak via `POST /api/admin/vector-backfill/run` (Admin policy). Progress is cursor-persisted, so a stopped run resumes.
