@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
         // Register handlers
         services.AddScoped<ISyncHandler, TelegramSyncHandler>();
         services.AddScoped<ISyncHandler, MastodonSyncHandler>();
+        services.AddScoped<ISyncHandler, FanfouSyncHandler>();
         services.AddScoped<ISyncHandler, ManticoreSearchSyncHandler>();
 
         // Register background processor

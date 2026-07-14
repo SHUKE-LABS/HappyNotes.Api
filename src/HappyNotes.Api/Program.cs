@@ -141,6 +141,7 @@ void ConfigAuthentication(WebApplicationBuilder b)
     var configuration = b.Configuration;
     services.Configure<JwtConfig>(configuration.GetSection("Jwt"));
     services.Configure<GoogleOAuthConfig>(configuration.GetSection("GoogleOAuth"));
+    services.Configure<FanfouConfig>(configuration.GetSection("Fanfou"));
     var jwtConfig = configuration.GetSection("Jwt").Get<JwtConfig>();
     services.AddAuthentication(options =>
         {

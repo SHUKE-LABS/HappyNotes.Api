@@ -16,6 +16,7 @@ public class Note : EntityBase
     public string Tags { get; set; } = string.Empty;
     public string? TelegramMessageIds { get; set; }
     public string? MastodonTootIds { get; set; }
+    public string? FanfouStatusIds { get; set; }
 
     [SugarColumn(IsIgnore = true)] public User User { get; set; } = default!;
     [SugarColumn(IsIgnore = true)] public List<string> TagList { get; set; } = [];
@@ -23,6 +24,10 @@ public class Note : EntityBase
     public void UpdateMastodonInstanceIds(List<MastodonSyncedInstance> instances)
     {
         MastodonTootIds = string.Join(",", instances.Select(r => $"{r.UserAccountId}:{r.TootId}"));
+    }
+    public void UpdateFanfouInstanceIds(List<FanfouSyncedInstance> instances)
+    {
+        FanfouStatusIds = string.Join(",", instances.Select(r => $"{r.UserAccountId}:{r.StatusId}"));
     }
     public void UpdateTelegramMessageIds(List<SyncedTelegramChannel> channels)
     {
@@ -68,5 +73,46 @@ public class Note : EntityBase
         tootIds.RemoveAll(id => id.Equals(targetId, StringComparison.OrdinalIgnoreCase));
 
         MastodonTootIds = tootIds.Any() ? string.Join(",", tootIds) : null;
+    }
+
+    public void AddFanfouStatusId(long userAccountId, string statusId)
+    {
+        var statusIdEntry = $"{userAccountId}:{statusId}";
+
+        if (string.IsNullOrWhiteSpace(FanfouStatusIds))
+        {
+            FanfouStatusIds = statusIdEntry;
+        }
+        else
+        {
+            var statusIds = FanfouStatusIds.Split(',').ToList();
+            var existingIndex = statusIds.FindIndex(id => id.StartsWith($"{userAccountId}:"));
+
+            if (existingIndex >= 0)
+            {
+                statusIds[existingIndex] = statusIdEntry;
+            }
+            else
+            {
+                statusIds.Add(statusIdEntry);
+            }
+
+            FanfouStatusIds = string.Join(",", statusIds);
+        }
+    }
+
+    public void RemoveFanfouStatusId(long userAccountId, string statusId)
+    {
+        if (string.IsNullOrWhiteSpace(FanfouStatusIds))
+        {
+            return;
+        }
+
+        var statusIds = FanfouStatusIds.Split(',').ToList();
+        var targetId = $"{userAccountId}:{statusId}";
+
+        statusIds.RemoveAll(id => id.Equals(targetId, StringComparison.OrdinalIgnoreCase));
+
+        FanfouStatusIds = statusIds.Any() ? string.Join(",", statusIds) : null;
     }
 }

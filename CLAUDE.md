@@ -70,6 +70,7 @@ The application uses a **Redis-based queue system** for reliable background sync
 ### Supported Services
 - ✅ **Telegram**: Full queue integration with channel management
 - ✅ **Mastodon**: Complete queue integration with instance management
+- ✅ **Fanfou**: Queue integration via OAuth 1.0a; per-user sync rule (all / public-only / `#fanfou` tag)
 - ⏳ **ManticoreSearch**: Not yet migrated (still uses direct sync)
 
 ### Configuration
