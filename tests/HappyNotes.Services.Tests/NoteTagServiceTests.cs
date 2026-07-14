@@ -125,6 +125,7 @@ public class NoteTagServiceGetTagDataTests
                 Tags TEXT NOT NULL,
                 TelegramMessageIds TEXT,
                 MastodonTootIds TEXT,
+                FanfouStatusIds TEXT,
                 CreatedAt INTEGER NOT NULL,
                 UpdatedAt INTEGER,
                 DeletedAt INTEGER
