@@ -77,7 +77,18 @@ jobs:
         run: rm -rf "${{ inputs.deploy_path }}"/*
 
       - name: Publish (self-contained)
-        run: dotnet publish -c Release --self-contained true --runtime linux-x64 --property:PublishDir=${{ inputs.deploy_path }}
+        # Publish ONLY the API project. Publishing the bare solution (no project
+        # arg) fans out to all 8 src libraries AND the 3 test projects, every one
+        # of them writing into the single shared output dir in parallel. That race
+        # non-deterministically drops framework assemblies from the API's
+        # self-contained closure (e.g. Microsoft.Extensions.DependencyInjection
+        # .Abstractions), and leaks Moq/NUnit/coverlet into the deploy dir — the
+        # crash-on-startup that forced a rollback. One project + --output is
+        # deterministic and clean.
+        run: >-
+          dotnet publish src/HappyNotes.Api/HappyNotes.Api.csproj
+          -c Release --self-contained true --runtime linux-x64
+          --output "${{ inputs.deploy_path }}"
 
       - name: Replace placeholders with actual information
         run: |
