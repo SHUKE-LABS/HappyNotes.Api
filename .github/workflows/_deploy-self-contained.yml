@@ -49,7 +49,7 @@ jobs:
       - name: Setup .NET SDK ${{ matrix.dotnet }}
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ matrix.dotnet }}
+          global-json-file: global.json
         env:
           # racknerd runs a rootless self-hosted runner; the default
           # /usr/share/dotnet is not writable. Install into the runner
