@@ -3,6 +3,7 @@ using System.Text.Json;
 using HappyNotes.Common.Enums;
 using HappyNotes.Entities;
 using HappyNotes.Services.interfaces;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
 using SqlSugar;
@@ -15,11 +16,13 @@ public class SearchServiceTests
     private readonly Mock<IDatabaseClient> _mockDatabaseClient;
     private readonly SearchService _searchService;
     private readonly Mock<HttpMessageHandler> _mockHandler;
+    private readonly Mock<ILogger<SearchService>> _mockLogger;
 
     public SearchServiceTests()
     {
         _mockDatabaseClient = new Mock<IDatabaseClient>();
         _mockHandler = new Mock<HttpMessageHandler>();
+        _mockLogger = new Mock<ILogger<SearchService>>();
         _mockHandler.Protected()
             .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(new HttpResponseMessage
@@ -29,7 +32,7 @@ public class SearchServiceTests
             });
         var httpClient = new HttpClient(_mockHandler.Object);
         var options = new ManticoreConnectionOptions { HttpEndpoint = "http://127.0.0.1:9308" };
-        _searchService = new SearchService(_mockDatabaseClient.Object, httpClient, options);
+        _searchService = new SearchService(_mockDatabaseClient.Object, httpClient, options, _mockLogger.Object);
     }
 
     [SetUp]
@@ -38,6 +41,7 @@ public class SearchServiceTests
         // Reset mock invocations before each test to avoid cross-test interference.
         _mockDatabaseClient.Reset();
         _mockHandler.Reset();
+        _mockLogger.Reset();
         _mockHandler.Protected()
             .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(new HttpResponseMessage
@@ -45,6 +49,35 @@ public class SearchServiceTests
                 StatusCode = HttpStatusCode.OK,
                 Content = new StringContent("{\"took\":0,\"timed_out\":false,\"hits\":{\"total\":0,\"hits\":[]}}")
             });
+    }
+
+    [Test]
+    public void GetNoteIdsByKeywordAsync_ManticoreError_LogsStatusCodeAndErrorBody()
+    {
+        // Arrange
+        const string errorBody = "manticore failure";
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.BadGateway,
+                Content = new StringContent(errorBody)
+            });
+
+        // Act
+        var exception = Assert.ThrowsAsync<Exception>(async () =>
+            await _searchService.GetNoteIdsByKeywordAsync(1, "test", 1, 10));
+
+        // Assert
+        Assert.That(exception!.Message, Does.Contain(errorBody));
+        _mockLogger.Verify(logger => logger.Log(
+                LogLevel.Error,
+                It.IsAny<Microsoft.Extensions.Logging.EventId>(),
+                It.Is<It.IsAnyType>((state, _) =>
+                    state.ToString()!.Contains("502") && state.ToString()!.Contains(errorBody)),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
     }
 
     [Test]

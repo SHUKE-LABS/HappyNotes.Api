@@ -118,6 +118,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSyncQueue(builder.Configuration);
 
 var app = builder.Build();
+DuplicateRequestChecker.ConfigureLogger(app.Services.GetRequiredService<ILoggerFactory>());
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Local"))
 {
     app.UseSwagger();

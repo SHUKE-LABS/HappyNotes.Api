@@ -2,6 +2,7 @@ using HappyNotes.Common.Enums;
 using HappyNotes.Entities;
 using HappyNotes.Services;
 using HappyNotes.Services.interfaces;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace HappyNotes.Services.Tests;
@@ -29,7 +30,8 @@ public class SemanticSearchIntegrationTests
     public void Setup()
     {
         var options = new ManticoreConnectionOptions { HttpEndpoint = "http://127.0.0.1:9308/" };
-        _searchService = new SearchService(new Mock<IDatabaseClient>().Object, new HttpClient(), options);
+        _searchService = new SearchService(new Mock<IDatabaseClient>().Object, new HttpClient(), options,
+            NullLogger<SearchService>.Instance);
     }
 
     private static float[] Vector(float seed)

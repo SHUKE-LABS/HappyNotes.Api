@@ -7,6 +7,7 @@ using HappyNotes.Common.Enums;
 using HappyNotes.Entities;
 using HappyNotes.Models.Search;
 using HappyNotes.Services.interfaces;
+using Microsoft.Extensions.Logging;
 using SqlSugar;
 
 namespace HappyNotes.Services;
@@ -15,11 +16,14 @@ public class SearchService : ISearchService
 {
     private readonly IDatabaseClient _client;
     private readonly HttpClient _httpClient;
+    private readonly ILogger<SearchService> _logger;
 
-    public SearchService(IDatabaseClient client, HttpClient httpClient, ManticoreConnectionOptions options)
+    public SearchService(IDatabaseClient client, HttpClient httpClient, ManticoreConnectionOptions options,
+        ILogger<SearchService> logger)
     {
         _client = client;
         _httpClient = httpClient;
+        _logger = logger;
         _httpClient.BaseAddress = new Uri(options.HttpEndpoint);
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
@@ -42,14 +46,12 @@ public class SearchService : ISearchService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            // Log the error response for debugging
-            Console.WriteLine("ManticoreSearch Error: " + errorContent);
+            _logger.LogError("Manticore search failed with status code {StatusCode}: {ErrorBody}",
+                (int)response.StatusCode, errorContent);
             throw new Exception($"ManticoreSearch returned error: {response.StatusCode} - {errorContent}");
         }
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        // Log the raw response for debugging
-        Console.WriteLine("ManticoreSearch Response: " + responseContent);
 
         var searchResult = JsonSerializer.Deserialize<ManticoreSearchResult>(responseContent, JsonSerializerConfig.Default);
 
