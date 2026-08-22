@@ -15,7 +15,6 @@ public class GeneralMemoryCacheService(
     {
         if (cache.TryGetValue(CacheKey(cacheKey), out T? value))
         {
-            Console.WriteLine("Success");
             return value;
         }
 

@@ -3,6 +3,8 @@ using System.Text.Json;
 using Api.Framework.Helper;
 using HappyNotes.Common;
 using HappyNotes.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace HappyNotes.Services;
 
@@ -17,6 +19,7 @@ public static class DuplicateRequestChecker
     private static TimeSpan _expirationDuration = TimeSpan.FromSeconds(ExpirationDurationInSeconds);
     private static TimeSpan _cleanupInterval = TimeSpan.FromSeconds(CleanupIntervalInSeconds);
     private static readonly object CleanupLock = new();
+    private static ILogger _logger = NullLogger.Instance;
 
     private static readonly CancellationTokenSource CancellationTokenSource = new();
     public static int Length(long userId) => RecentRequests.Count(r => r.Key == userId);
@@ -74,11 +77,17 @@ public static class DuplicateRequestChecker
             }
             catch (Exception ex)
             {
-                // Log the exception using a logging framework
-                Console.WriteLine($"Scheduled cleanup error: {ex.Message}");
+                _logger.LogError(ex, "Scheduled duplicate request cleanup failed");
             }
         }
     }
+
+    public static void ConfigureLogger(ILoggerFactory loggerFactory)
+    {
+        ArgumentNullException.ThrowIfNull(loggerFactory);
+        _logger = loggerFactory.CreateLogger("HappyNotes.Services.DuplicateRequestChecker");
+    }
+
     // Method to set the cleanup interval dynamically
     public static void SetCleanupInterval(TimeSpan interval)
     {

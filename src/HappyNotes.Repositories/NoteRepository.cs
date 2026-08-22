@@ -108,7 +108,6 @@ public class NoteRepository(ISqlSugarClient dbClient) : RepositoryBase<Note>(dbC
                 JoinType.Inner, n.Id == t.NoteId
             )).WhereIF(null != where, where)
             .OrderByIF(orderBy != null, orderBy, isAsc ? OrderByType.Asc : OrderByType.Desc);
-        Console.WriteLine(queryable.ToSqlString());
 
         List<Note> result = await queryable
             .Mapper(n => n.User, n => n.UserId)
