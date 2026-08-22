@@ -49,6 +49,12 @@ jobs:
           sed -i 's@redis-connection-placeholder@arm.shukebeta.eu.org:6380@g' "$APPSETTINGS"
           echo 'Placeholders replaced.'
 
+      - name: Package database migration assets
+        run: >-
+          tar -czf "happynotes-migrations-${{ github.run_id }}.tar.gz"
+          deploy/apply-migrations.sh deploy/migrations-baseline.txt
+          documents/database/changelist
+
       # Stop the service and clean the deploy directory so stale files (e.g. the
       # old self-contained runtime) don't linger after switching to framework-dependent.
       - name: Stop service and clean deploy directory
@@ -74,6 +80,34 @@ jobs:
           source: "publish/*"
           target: ${{ secrets.DEPLOY_PATH }}
           strip_components: 1
+
+      - name: Copy database migration assets to staging host
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "happynotes-migrations-${{ github.run_id }}.tar.gz"
+          target: /tmp
+
+      - name: Apply database migrations
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            ARCHIVE="/tmp/happynotes-migrations-${{ github.run_id }}.tar.gz"
+            MIGRATION_DIR="$(mktemp -d)"
+            cleanup() {
+              rm -rf "$MIGRATION_DIR" "$ARCHIVE"
+            }
+            trap cleanup EXIT
+            tar -xzf "$ARCHIVE" -C "$MIGRATION_DIR"
+            bash "$MIGRATION_DIR/deploy/apply-migrations.sh"
 
       - name: Install user systemd unit and restart service
         uses: appleboy/ssh-action@master
