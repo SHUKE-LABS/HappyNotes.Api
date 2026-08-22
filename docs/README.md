@@ -6,6 +6,7 @@ This directory contains technical documentation for the HappyNotes.Api project.
 
 - **technotes/**: Technical investigation notes and problem-solving documentation
   - `deployment-pipeline-debugging-2025-08-21.md`: Deployment pipeline issues and resolution
+- `database-migrations.md`: Database changelist migration procedure and deploy contract
 
 ## Contributing to Documentation
 

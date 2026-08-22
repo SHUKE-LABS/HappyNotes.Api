@@ -105,6 +105,9 @@ jobs:
           sed -i "s#seq-api-key-placeholder#${{ secrets.SEQ_API_KEY }}#g" "$APPSETTINGS"
           sed -i "s/redis-connection-placeholder/arm.shukebeta.eu.org:6381/g" "$APPSETTINGS"
 
+      - name: Apply database migrations
+        run: bash deploy/apply-migrations.sh
+
       - name: Install systemd unit and restart service
         run: |
           set -e

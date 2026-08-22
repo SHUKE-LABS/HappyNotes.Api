@@ -1,0 +1,16 @@
+documents/database/changelist/2024/05-12-test-patch.sql
+documents/database/changelist/2024/05-28-add-is-markdown-field-to-note.sql
+documents/database/changelist/2024/05-28-add-user-settings-table.sql
+documents/database/changelist/2024/07-05-change-note-tag.sql
+documents/database/changelist/2024/07-10-add-indexes.sql
+documents/database/changelist/2024/07-19-note-tag-adjustment.sql
+documents/database/changelist/2024/08-02-add-telegram-settings.sql
+documents/database/changelist/2024/08-06-adjust-telegram-settings.sql
+documents/database/changelist/2024/08-10-add-TelegramMessageIds-field-to-note.sql
+documents/database/changelist/2024/08-13-note-tag-adjustment-add-UserId-field.sql
+documents/database/changelist/2024/10-07-update-files-table.sql
+documents/database/changelist/2024/10-13-add-mastodon-sync-settings.sql
+documents/database/changelist/2024/10-28-add-SyncType-field-to-MastodonUserAccount.sql
+documents/database/changelist/2025/04-21-favoritecount-removal-and-index-optimization.sql
+documents/database/changelist/2026/07-04-add-user-external-login-table.sql
+documents/database/changelist/2026/07-15-add-fanfou-sync.sql
