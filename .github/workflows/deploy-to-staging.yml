@@ -12,7 +12,9 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    # Self-hosted ci-light pool (org "self-hosted-ci" runner group) — this
+    # fires on every master/feature push and was burning hosted minutes.
+    runs-on: [self-hosted, Linux, ci-light]
 
     steps:
       - uses: actions/checkout@v4
